@@ -1,0 +1,23 @@
+id: reconciliation
+description: >-
+  Operational back-office costs for reconciliation exception handling.
+  Representative ratios (unit = one analyst review unit); empirical anchors
+  to be added in P1.14 severity-cost registry.
+version: "0.1.0"
+sources:
+  - title: "Fed Payments Study 2024 topline"
+    url: "https://www.federalreserve.gov/paymentsystems/frps_cy2015_24_topline.htm"
+    date: "2026-07"
+    note: "Scale of the payments machine; average ACH credit ~$3,881."
+  - title: "Basel III operational risk event types (classes 4-5)"
+    url: "https://www.bis.org"
+    date: "2023-01"
+    note: "Execution/process errors and payment/settlement are capitalized op-risk events."
+severity_costs:
+  LOW: 0.2
+  MEDIUM: 1.0
+  HIGH: 10.0
+  CRITICAL: 50.0
+escalate_cost: 1.0
+judge_cost: 0.1
+latency_penalty_per_s: 0.0

@@ -1,0 +1,19 @@
+id: review_heavy
+description: >-
+  High human-review cost environment (scarce specialists, e.g. compliance
+  analysts). Review is expensive, so escalation must be reserved for cases
+  where expected avoided loss is genuinely large.
+version: "0.1.0"
+sources:
+  - title: "LexisNexis True Cost of AML Compliance"
+    url: "https://risk.lexisnexis.com/insights-resources/research/true-cost-of-aml-compliance-study"
+    date: "2024-01"
+    note: "US financial institutions spend ~$31-37B/yr on AML compliance; >90% of alerts are false positives."
+severity_costs:
+  LOW: 1.0
+  MEDIUM: 5.0
+  HIGH: 50.0
+  CRITICAL: 250.0
+escalate_cost: 25.0
+judge_cost: 0.1
+latency_penalty_per_s: 0.0

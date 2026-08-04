@@ -1,0 +1,13 @@
+id: flat
+description: >-
+  Flat cost model. Every severity costs the same. Used for the H0 theorem
+  test: with flat K, loss ranking must equal accuracy ranking.
+version: "0.1.0"
+severity_costs:
+  LOW: 1.0
+  MEDIUM: 1.0
+  HIGH: 1.0
+  CRITICAL: 1.0
+escalate_cost: 1.0
+judge_cost: 0.0
+latency_penalty_per_s: 0.0

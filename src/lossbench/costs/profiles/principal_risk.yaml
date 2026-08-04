@@ -1,0 +1,23 @@
+id: principal_risk
+description: >-
+  Large-value settlement emphasis. Fat-tailed: a missed HIGH/CRITICAL
+  exception is principal at risk (multi-million exposure), review is cheap
+  relative to the tail.
+version: "0.1.0"
+sources:
+  - title: "BIS Triennial FX survey 2022"
+    url: "https://www.bis.org/statistics/rpfx22.htm"
+    date: "2022-10"
+    note: "FX turnover $7.5T/day; failed settlement is a liquidity + credit event."
+  - title: "Fedwire Funds Services"
+    url: "https://www.federalreserve.gov/paymentsystems/fedfunds_about.htm"
+    date: "2026-01"
+    note: "Average wire transfer is multi-million-dollar; misrouting is a $1M-$10M incident class."
+severity_costs:
+  LOW: 1.0
+  MEDIUM: 10.0
+  HIGH: 1000.0
+  CRITICAL: 100000.0
+escalate_cost: 1.0
+judge_cost: 0.1
+latency_penalty_per_s: 0.01
