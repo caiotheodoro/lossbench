@@ -1,13 +1,28 @@
-"""Seeded, verifier-validated task generation for finance back-office domains."""
+"""Seeded, verifier-validated task generation for finance back-office domains.
+
+The generator loop guarantees 100% verifier agreement: every candidate task
+runs through its domain verifier before acceptance, and failed draws are
+rejected and re-drawn deterministically from the same seeded stream.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
 
+from lossbench.generate.payment_repair import (
+    generate_payment_repair_suite_internal,
+    verifier_payment_repair,
+)
 from lossbench.generate.reconciliation import (
     generate_suite_internal as _generate_reconciliation_suite,
+)
+from lossbench.generate.reconciliation import (
     verifier_reconciliation,
+)
+from lossbench.generate.settlement import (
+    generate_settlement_suite_internal,
+    verifier_settlement,
 )
 from lossbench.generate.taxonomy import task_signature
 from lossbench.schema import Task
@@ -16,10 +31,14 @@ DOMAINS = ("reconciliation", "payment_repair", "settlement")
 
 _VERIFIERS: dict[str, Callable[[Task, dict[str, Any]], bool]] = {
     "reconciliation": verifier_reconciliation,
+    "payment_repair": verifier_payment_repair,
+    "settlement": verifier_settlement,
 }
 
 _SUITE_GENERATORS: dict[str, Callable[..., list[Task]]] = {
     "reconciliation": _generate_reconciliation_suite,
+    "payment_repair": generate_payment_repair_suite_internal,
+    "settlement": generate_settlement_suite_internal,
 }
 
 
