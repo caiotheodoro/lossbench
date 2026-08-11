@@ -1,0 +1,180 @@
+sources:
+  fed_payments_study_2024:
+    title: "Federal Reserve Payments Study 2024"
+    url: "https://www.federalreserve.gov/paymentsystems/frps_cy2015_24_topline.htm"
+    date: "2026-07"
+    note: "Average ACH credit transaction value (~$3,881) from the FRPS 2015-24 topline tables."
+  fedwire_about:
+    title: "Fedwire Funds Services"
+    url: "https://www.federalreserve.gov/paymentsystems/fedfunds_about.htm"
+    date: "2026-01"
+    note: "Fedwire service overview; average daily transfer values drive the misrouted-wire order of magnitude."
+  card_network_fee_schedules:
+    title: "Card network chargeback fee schedules"
+    url: "https://www.chargebacks911.com/chargeback-fees/"
+    date: "2025-01"
+    note: "Public compilations of interchange/network chargeback fees; contest with a specific acquirer schedule."
+  lexisnexis_true_cost_fraud:
+    title: "LexisNexis True Cost of Fraud Study"
+    url: "https://risk.lexisnexis.com/insights-resources/research/true-cost-of-fraud-study"
+    date: "2025-10"
+    note: "Blended multiplier of direct fraud loss across US financial institutions."
+  fincen_sar_stats:
+    title: "FinCEN SAR stats"
+    url: "https://www.fincen.gov/reports/sar-stats"
+    date: "2026-01"
+    note: "FinCEN Suspicious Activity Report statistics; context for SAR volumes and staffing."
+  fincen_enforcement_actions:
+    title: "FinCEN enforcement actions"
+    url: "https://www.fincen.gov/resources/enforcement-actions"
+    date: "2026-01"
+    note: "Regulatory enforcement and penalty magnitudes for AML program failures, including missed SARs."
+  lexisnexis_aml_compliance:
+    title: "LexisNexis True Cost of AML Compliance"
+    url: "https://risk.lexisnexis.com/insights-resources/research/true-cost-of-aml-compliance-study"
+    date: "2024-10"
+    note: "Analyst labour cost per AML alert review."
+  coalition_insurance_fraud:
+    title: "Coalition Against Insurance Fraud"
+    url: "https://insurancefraud.org"
+    date: "2025-01"
+    note: "Aggregate annual US insurance fraud cost; per-incident anchor derived from the aggregate."
+  caqh_index:
+    title: "CAQH Index"
+    url: "https://www.caqh.org/caqh-index"
+    date: "2025-01"
+    note: "Cost of manual versus automated administrative transactions; prior-authorization manual handling."
+  cms_improper_payment:
+    title: "CMS improper payment statistics"
+    url: "https://www.cms.gov/medicare/medicare-fee-for-service-payment/improperpaymentstatistics"
+    date: "2025-11"
+    note: "Medicare FFS improper payment rate and aggregate dollars; per-claim anchor derived from the aggregate."
+  bis_fx_settlement:
+    title: "BIS FX settlement statistics"
+    url: "https://www.bis.org/statistics/rpfx22.htm"
+    date: "2026-01"
+    note: "BIS triennial FX turnover; a failed settlement can expose the principal."
+
+entries:
+  misposted_ach:
+    event_type: misposted_ach
+    domain: payments
+    cost_low: 500.0
+    cost_typical: 3881.0
+    cost_high: 50000.0
+    unit: USD_per_incident
+    sources: [fed_payments_study_2024]
+    note: >-
+      Order-of-magnitude anchor for a misposted ACH credit: typical equals the
+      average ACH credit value ($3,881); the range spans small retail to large
+      corporate credit postings. Public anchor, not an actuarial value; contest
+      with your own ledger before use.
+  misrouted_wire:
+    event_type: misrouted_wire
+    domain: payments
+    cost_low: 1000000.0
+    cost_typical: 5000000.0
+    cost_high: 10000000.0
+    unit: USD_per_incident
+    sources: [fedwire_about]
+    note: >-
+      Principal exposure when a wire transfer is routed to the wrong account;
+      typical equals a mid-size Fedwire transfer value. Order-of-magnitude
+      public anchor to be contested with your bank's transfer profile.
+  chargeback:
+    event_type: chargeback
+    domain: payments
+    cost_low: 15.0
+    cost_typical: 40.0
+    cost_high: 100.0
+    unit: USD_per_incident
+    sources: [card_network_fee_schedules]
+    note: >-
+      Network and acquiring fees per chargeback; fees exclude the disputed
+      amount, which must be modelled separately. Order-of-magnitude anchor to
+      be contested against your acquirer's schedule.
+  fraud_multiplier:
+    event_type: fraud_multiplier
+    domain: payments
+    cost_low: 2.5
+    cost_typical: 3.75
+    cost_high: 5.0
+    unit: USD_per_1_dollar_loss
+    sources: [lexisnexis_true_cost_fraud]
+    note: >-
+      Dollars of total cost per dollar of direct fraud loss (replacement,
+      investigation, customer impact). Public blended figure, not actuarial;
+      contest with your fraud program's cost-to-loss ratio.
+  missed_sar:
+    event_type: missed_sar
+    domain: aml
+    cost_low: 1000000.0
+    cost_typical: 10000000.0
+    cost_high: 100000000.0
+    unit: USD_per_incident
+    sources: [fincen_enforcement_actions, fincen_sar_stats]
+    note: >-
+      Regulatory penalty exposure when a suspicious activity report is not
+      filed; typical is an order-of-magnitude penalty anchor, the high bound
+      reflects civil money penalty magnitudes. Not actuarial; contest with
+      enforcement precedents for your line of business.
+  false_positive_review:
+    event_type: false_positive_review
+    domain: aml
+    cost_low: 3.0
+    cost_typical: 6.5
+    cost_high: 10.0
+    unit: USD_per_review
+    sources: [lexisnexis_aml_compliance]
+    note: >-
+      Fully loaded analyst labour cost of reviewing one false-positive AML
+      alert. Order-of-magnitude anchor; contest with your team's cost per
+      analyst hour and alerts-per-analyst load.
+  insurance_fraud:
+    event_type: insurance_fraud
+    domain: insurance
+    cost_low: 1000.0
+    cost_typical: 100000.0
+    cost_high: 5000000.0
+    unit: USD_per_incident
+    sources: [coalition_insurance_fraud]
+    note: >-
+      Per-incident anchor derived from the aggregate annual US insurance fraud
+      cost; the wide range reflects claim severity skew. Order-of-magnitude
+      public anchor to be contested with your book's fraud losses.
+  prior_auth_manual:
+    event_type: prior_auth_manual
+    domain: healthcare
+    cost_low: 2.56
+    cost_typical: 12.43
+    cost_high: 12.43
+    unit: USD_per_transaction
+    sources: [caqh_index]
+    note: >-
+      Cost of handling a prior-authorization transaction manually versus
+      electronically; typical is the manual cost from the CAQH Index.
+      Order-of-magnitude anchor to be contested with your payer's unit costs.
+  improper_payment:
+    event_type: improper_payment
+    domain: healthcare
+    cost_low: 100.0
+    cost_typical: 1500.0
+    cost_high: 10000.0
+    unit: USD_per_incident
+    sources: [cms_improper_payment]
+    note: >-
+      Per-claim anchor derived from the aggregate Medicare improper payment
+      amount; the range spans claim denial, overpayment and recovery costs.
+      Order-of-magnitude public anchor to be contested, not an actuarial value.
+  settlement_failure:
+    event_type: settlement_failure
+    domain: settlement
+    cost_low: 100000.0
+    cost_typical: 1000000.0
+    cost_high: 1000000000.0
+    unit: USD_per_incident
+    sources: [bis_fx_settlement]
+    note: >-
+      Principal exposure when a settlement leg fails to pay; the high bound
+      reflects large-value FX turnover per BIS. Order-of-magnitude public
+      anchor to be contested with your settlement book.
