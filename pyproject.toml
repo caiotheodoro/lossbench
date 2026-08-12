@@ -13,6 +13,10 @@ dependencies = [
     "netcal>=1.4.0",
     "scikit-learn>=1.9.0",
     "opentelemetry-api>=1.44.0",
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.52.3",
+    "httpx>=0.28.1",
+    "scipy>=1.17.1",
 ]
 
 [dependency-groups]
@@ -41,3 +45,4 @@ testpaths = ["tests"]
 addopts = "-q"
 pythonpath = ["src"]
 
+[project.scripts]
