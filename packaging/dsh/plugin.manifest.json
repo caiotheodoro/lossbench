@@ -1,0 +1,14 @@
+{
+  "bridge": {
+    "auth_header": "x-lossbench-key",
+    "timeout_s": 30,
+    "url": "http://127.0.0.1:8090/lossbench"
+  },
+  "hooks": [
+    "beforeModel",
+    "beforeTool",
+    "onResolution"
+  ],
+  "id": "lossbench-risk-control",
+  "version": "0.1.0"
+}
