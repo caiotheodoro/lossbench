@@ -1,0 +1,13 @@
+id: lossbench
+description: Expected-loss evaluation and control for agentic back-office systems
+version: 0.1.0
+dataset:
+  path: LossBench/lossbench
+  revision: main
+task_types:
+  - text-generation
+metric:
+  name: severity_weighted_loss
+  higher_is_better: false
+license: cc-by-4.0
+paper: null
