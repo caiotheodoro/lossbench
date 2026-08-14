@@ -21,6 +21,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "gradio>=6.24.0",
     "opentelemetry-sdk>=1.44.0",
     "pytest>=8.0",
     "ruff>=0.5",
@@ -46,3 +47,4 @@ addopts = "-q"
 pythonpath = ["src"]
 
 [project.scripts]
+lossbench = "lossbench.cli.main:cli"
