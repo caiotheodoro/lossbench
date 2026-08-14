@@ -1,0 +1,31 @@
+{
+  "models": [
+    {"model_id": "qwen3-8b", "loss": 0.9, "pass_k": 0.81, "ece": 0.058, "escalated": 9, "total_cost": 61.0},
+    {"model_id": "baseline-gpt-4o", "loss": 1.6, "escalated": 21, "total_cost": 210.0},
+    {"model_id": "reconforge-1.7b", "loss": 0.42, "pass_k": 0.87, "ece": 0.031, "escalated": 14, "total_cost": 92.5}
+  ],
+  "sensitivities": {
+    "reconforge-1.7b": [
+      {"ratio": 1.0, "loss": 0.42},
+      {"ratio": 2.0, "loss": 0.82},
+      {"ratio": 5.0, "loss": 2.02},
+      {"ratio": 10.0, "loss": 4.02}
+    ],
+    "qwen3-8b": [
+      {"ratio": 1.0, "loss": 0.9},
+      {"ratio": 2.0, "loss": 1.2},
+      {"ratio": 5.0, "loss": 2.1},
+      {"ratio": 10.0, "loss": 3.6}
+    ],
+    "baseline-gpt-4o": [
+      {"ratio": 1.0, "loss": 1.6},
+      {"ratio": 2.0, "loss": 2.2},
+      {"ratio": 5.0, "loss": 4.0},
+      {"ratio": 10.0, "loss": 7.0}
+    ]
+  },
+  "honest_limits": [
+    "Rankings depend on the severity-cost regime; crossovers above show where they flip.",
+    "pass^k and ECE are reported at one published operating point, not a full curve."
+  ]
+}
