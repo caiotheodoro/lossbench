@@ -1,4 +1,4 @@
-.PHONY: validate lint test install
+.PHONY: validate lint test install determinism
 
 install:
 	uv sync --dev
@@ -16,5 +16,14 @@ lint:
 
 test:
 	uv run pytest
+
+determinism:
+	@# Two full runs from the same seed must produce byte-identical report.md
+	@# and contamination certificates (the determinism gate the design
+	@# requires). Runtime metadata (generated_at, durations) is excluded.
+	rm -rf /tmp/lb-golden-a /tmp/lb-golden-b
+	uv run python -m scripts.full_run --out /tmp/lb-golden-a --seed 7 --n-tasks 100
+	uv run python -m scripts.full_run --out /tmp/lb-golden-b --seed 7 --n-tasks 100
+	uv run python -m scripts.check_determinism
 
 validate: lint test
