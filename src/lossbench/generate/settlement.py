@@ -25,6 +25,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
+from lossbench.generate.prompt import render_prompt
 from lossbench.generate.taxonomy import task_signature
 from lossbench.schema import Severity, Task
 
@@ -235,11 +236,13 @@ def generate_settlement_task(
     task = Task(
         id=task_id,
         domain="settlement",
-        prompt=(
+        prompt=render_prompt(
             "Assess settlement risk for the FX trade. Decide MATCH (settle as "
             "normal), ESCALATE (route to a senior operator), or HITL (halt and "
-            "route to a human). Report the exposure class (LOW/HIGH/CRITICAL) "
-            "and, if a signal applies, name the exception type exactly."
+            "route to a human). Report the exposure class and, if a signal "
+            "applies, name the exception type exactly.",
+            state,
+            "settlement",
         ),
         initial_state=state,
         available_tools=[
@@ -283,7 +286,9 @@ def generate_settlement_suite_internal(
             diff,
             severity_mix,
             policy_id="p0",
-            cost_model_ref="settlement",
+            # principal_risk is the large-value settlement profile; there has
+            # never been a settlement.yaml, so this ref used to raise on load.
+            cost_model_ref="principal_risk",
         )
         if not verifier(candidate, candidate.gold):
             continue

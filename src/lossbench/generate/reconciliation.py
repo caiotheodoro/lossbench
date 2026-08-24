@@ -30,6 +30,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
+from lossbench.generate.prompt import render_prompt
 from lossbench.generate.taxonomy import task_signature
 from lossbench.schema import Severity, Task
 
@@ -308,10 +309,12 @@ def generate_reconciliation_task(
     task = Task(
         id=task_id,
         domain="reconciliation",
-        prompt=(
+        prompt=render_prompt(
             "Compare the ledger record and the counterparty statement. "
             "Classify the pair as MATCH or EXCEPTION. If EXCEPTION, name the "
-            "exception type exactly."
+            "exception type exactly.",
+            state,
+            "reconciliation",
         ),
         initial_state=state,
         available_tools=["lookup_prior_bookings", "classify_pair"],

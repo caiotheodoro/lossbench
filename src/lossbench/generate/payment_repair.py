@@ -25,6 +25,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
+from lossbench.generate.prompt import render_prompt
 from lossbench.generate.taxonomy import task_signature
 from lossbench.schema import Severity, Task
 
@@ -314,12 +315,13 @@ def generate_payment_repair_task(
     task = Task(
         id=task_id,
         domain="payment_repair",
-        prompt=(
+        prompt=render_prompt(
             "An ISO 20022 payment instruction failed straight-through processing "
             "and landed in the exception/repair queue. Classify the exception "
             "signal exactly, decide whether automated repair is safe, and choose "
-            "the repair verb from: approve, amend_amount, amend_beneficiary, "
-            "resubmit, hold_hitl, reject."
+            "the repair verb.",
+            state,
+            "payment_repair",
         ),
         initial_state=state,
         available_tools=["classify_exception", "propose_repair", "hold_for_human_review"],

@@ -108,6 +108,8 @@ def test_summarize_suite_keys():
         "total_cost",
         "mean_duration_ms",
         "false_success_rate",
+        "parse_rate",
+        "error_rate",
     }
     assert summary["tasks"] == 3
     assert summary["trials"] == 2

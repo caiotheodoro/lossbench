@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import re
 import time
 from collections import defaultdict
 from collections.abc import Sequence
@@ -19,6 +20,8 @@ from lossbench.scoring.false_success import false_success_rate
 from lossbench.scoring.passk import outcome_verified_pass_at_k, pass_k_reliability
 
 _EPOCH = datetime(2026, 1, 1, tzinfo=UTC)
+
+_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.S)
 
 _VERIFIER_MODULES = {
     "verifier_reconciliation": "lossbench.generate.reconciliation",
@@ -37,6 +40,8 @@ class TrialResult:
     events: list[DecisionEvent]
     duration_ms: float
     cost: float
+    parse_ok: bool = True
+    errored: bool = False
 
 
 def domain_verifier(task: Task, outcome: dict[str, Any]) -> bool:
@@ -62,7 +67,8 @@ def summarize_suite(results: Sequence[TrialResult]) -> dict[str, Any]:
     """Aggregate trial outcomes into the documented summary dictionary.
 
     Returns {"tasks", "trials", "pass_at_1", "pass_at_k", "pass_k",
-    "total_cost", "mean_duration_ms", "false_success_rate"}: trials is the
+    "total_cost", "mean_duration_ms", "false_success_rate", "parse_rate",
+    "error_rate"}: trials is the
     per-task trial count, pass_at_1/pass_at_k/pass_k are computed over k =
     trials per task, and false_success_rate is the share of trajectories
     whose final event claims a decision without an observed outcome.
@@ -81,6 +87,8 @@ def summarize_suite(results: Sequence[TrialResult]) -> dict[str, Any]:
             "total_cost": 0.0,
             "mean_duration_ms": 0.0,
             "false_success_rate": 0.0,
+            "parse_rate": 0.0,
+            "error_rate": 0.0,
         }
     trials = len(results) // tasks
     matrix = [per_task[task_id] for task_id in sorted(per_task)]
@@ -100,6 +108,8 @@ def summarize_suite(results: Sequence[TrialResult]) -> dict[str, Any]:
         "total_cost": total_cost,
         "mean_duration_ms": mean_duration_ms,
         "false_success_rate": rate,
+        "parse_rate": sum(r.parse_ok for r in results) / len(results),
+        "error_rate": sum(r.errored for r in results) / len(results),
     }
 
 
@@ -133,12 +143,20 @@ class EvalHarness:
         events: list[DecisionEvent] = []
         prompt = task.prompt
         success = False
+        parse_ok = False
+        errored = False
         for step in range(self.max_steps):
             prompt_hash = _sha256(prompt)
             params = {"task_id": task.id, "step": step}
-            result = self._decide(task, prompt, prompt_hash, params, seed, input_hash)
-            outcome = _parse_outcome(result.text)
-            matched = domain_verifier(task, outcome)
+            try:
+                result = self._decide(task, prompt, prompt_hash, params, seed, input_hash)
+            except Exception:  # noqa: BLE001 - provider failures end this trial only
+                errored = True
+                break
+            parsed = parse_outcome(result.text)
+            parse_ok = parsed is not None
+            outcome = parsed if parsed is not None else {}
+            matched = parse_ok and domain_verifier(task, outcome)
             success = matched
             events.append(
                 self._build_event(
@@ -164,6 +182,8 @@ class EvalHarness:
             events=events,
             duration_ms=duration_ms,
             cost=sum(event.model_cost for event in events),
+            parse_ok=parse_ok,
+            errored=errored,
         )
 
     def run_suite(
@@ -227,6 +247,7 @@ class EvalHarness:
         is_final: bool,
     ) -> DecisionEvent:
         timestamp = _EPOCH + timedelta(seconds=(abs(seed) % (1 << 24)) * 60 + step)
+        confidence = _confidence(outcome, matched)
         enriched = dict(outcome)
         enriched.setdefault("severity", task.severity.value)
         if is_final:
@@ -243,8 +264,8 @@ class EvalHarness:
             model_id=result.model_id,
             decision=DecisionKind.ALLOW if is_final else DecisionKind.VERIFY,
             observed_outcome=enriched,
-            risk_features={"calibrated_p": 0.9 if matched else 0.1},
-            calibrated_probability=0.9 if matched else 0.1,
+            risk_features={"calibrated_p": confidence},
+            calibrated_probability=confidence,
             policy_id=task.policy_id,
             cost_model_id=task.cost_model_ref,
             token_usage=dict(result.token_usage),
@@ -253,26 +274,78 @@ class EvalHarness:
         )
 
 
+def _confidence(outcome: dict[str, Any], matched: bool) -> float:
+    """The model's own calibrated probability, when it gave a usable one.
+
+    Falls back to a correctness-derived stand-in so older runners and
+    unparseable answers still produce an event, but that fallback is not a
+    calibration measurement and ECE computed over it is meaningless.
+    """
+    raw = outcome.get("confidence")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return 0.9 if matched else 0.1
+    value = float(raw)
+    if value != value or not 0.0 <= value <= 1.0:  # NaN or out of range
+        return 0.9 if matched else 0.1
+    return value
+
+
 def _outcome_present(events: Sequence[DecisionEvent], gold: dict[str, Any]) -> bool:
     if not events:
         return False
     return events[-1].observed_outcome is not None
 
 
-def _parse_outcome(text: str) -> dict[str, Any]:
-    try:
-        parsed = json.loads(text)
-    except ValueError:
-        parsed = None
-    if isinstance(parsed, dict):
-        return parsed
-    return {"verdict": text.strip(), "exception_type": None}
+def parse_outcome(text: str) -> dict[str, Any] | None:
+    """Extract the answer object from a model response, or None on failure.
+
+    Accepts a bare JSON object, a fenced ```json block, and a reasoning
+    preamble ending in </think>. Returns None when no JSON object can be
+    recovered; an unparseable answer is a parse miss scored as a failure,
+    never silently coerced into a verdict.
+    """
+    body = text.split("</think>")[-1].strip()
+    fence = _FENCE_RE.search(body)
+    if fence is not None:
+        body = fence.group(1).strip()
+    for candidate in (body, _first_object(body)):
+        if not candidate:
+            continue
+        try:
+            parsed = json.loads(candidate)
+        except ValueError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def _first_object(text: str) -> str:
+    """Longest balanced {...} span in text, or "" when there is none."""
+    start = text.find("{")
+    if start < 0:
+        return ""
+    depth = 0
+    for index in range(start, len(text)):
+        char = text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return ""
 
 
 def _corrective_prompt(task: Task) -> str:
+    """Re-ask with the full task, not just a complaint.
+
+    task.prompt already carries the input data and the output contract, so
+    resending it verbatim keeps the retry answerable.
+    """
     return (
         f"Your previous answer for task '{task.id}' did not pass the domain "
-        f"verifier. Re-answer, reporting the correct outcome:\n{task.prompt}"
+        f"verifier. Re-answer, reporting the correct outcome.\n\n{task.prompt}"
     )
 
 
