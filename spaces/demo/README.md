@@ -3,9 +3,8 @@ title: LossBench Control Plane
 emoji: 📉
 colorFrom: indigo
 colorTo: gray
-sdk: gradio
-sdk_version: 6.24.0
-app_file: app.py
+sdk: static
+app_file: index.html
 pinned: false
 license: apache-2.0
 short_description: Re-run last month's workload under a different risk policy

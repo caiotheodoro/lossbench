@@ -1,8 +1,13 @@
-"""Publish the control-plane demo as a Hugging Face Space.
+"""Publish the control-plane demo as a static Hugging Face Space.
 
-The Space is a flat directory: `demo.py` goes up as `app.py`, which is the
-name the README front matter declares. Nothing here depends on a benchmark
-run, so the demo is honest whether or not model results exist.
+Gradio and Docker Spaces require a paid plan; static Spaces are free. The
+demo is precomputed by `static_space.build_data`, which scores every
+threshold with ReplayLab at build time, so the published page ships numbers
+this repo computed rather than a JavaScript reimplementation of the replay.
+
+The Gradio app in `spaces/demo/demo.py` still runs locally and stays the
+reference implementation. Nothing here depends on a benchmark run, so the
+demo is honest whether or not model results exist.
 
     uv run python packaging/hf/publish_space.py --dry-run
     uv run python packaging/hf/publish_space.py --repo caiotheodoro/lossbench-demo
@@ -22,34 +27,32 @@ _SOURCE = _REPO_ROOT / "spaces" / "demo"
 
 DEFAULT_REPO = "caiotheodoro/lossbench-demo"
 
-# source name -> name in the Space repo
-FILES = {
-    "demo.py": "app.py",
-    "requirements.txt": "requirements.txt",
-    "README.md": "README.md",
-}
-
-
 def build_payload(out: Path) -> list[Path]:
-    """Copy the Space files into `out` under the names the Hub expects."""
+    """Precompute the replay and write the static Space into `out`."""
+    import sys
+
+    sys.path.insert(0, str(_HERE))
+    import static_space
+
     out.mkdir(parents=True, exist_ok=True)
     written = []
-    for source_name, target_name in FILES.items():
-        source = _SOURCE / source_name
-        if not source.exists():
-            raise SystemExit(f"missing Space file: {source}")
-        target = out / target_name
-        shutil.copyfile(source, target)
-        written.append(target)
+
+    data = static_space.build_data()
+    page = out / "index.html"
+    page.write_text(static_space.build_page(data), encoding="utf-8")
+    written.append(page)
 
     readme = out / "README.md"
+    shutil.copyfile(_SOURCE / "README.md", readme)
+    written.append(readme)
+
     head = readme.read_text(encoding="utf-8").split("---\n")
     if len(head) < 3:
         raise SystemExit(
             "Space README has no YAML front matter; the Hub cannot resolve an SDK"
         )
-    if "app_file: app.py" not in head[1]:
-        raise SystemExit("Space README front matter must declare app_file: app.py")
+    if "sdk: static" not in head[1]:
+        raise SystemExit("Space README front matter must declare sdk: static")
     return written
 
 
@@ -75,12 +78,15 @@ def main() -> None:
     from huggingface_hub import HfApi
 
     api = HfApi()
-    api.create_repo(args.repo, repo_type="space", space_sdk="gradio", exist_ok=True)
+    api.create_repo(args.repo, repo_type="space", space_sdk="static", exist_ok=True)
     api.upload_folder(
         repo_id=args.repo,
         repo_type="space",
         folder_path=str(args.out),
-        commit_message="control-plane demo: replay a workload under a new policy",
+        commit_message=(
+            "static control-plane demo: replay precomputed by ReplayLab "
+            "across all 101 thresholds"
+        ),
     )
     print(f"published https://huggingface.co/spaces/{args.repo}")
 
