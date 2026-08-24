@@ -29,9 +29,11 @@ from lossbench.generate import DOMAINS, generate_suite
 from lossbench.ledger import AuditLedger
 from lossbench.metrics.calibration import ece
 from lossbench.metrics.loss import severity_weighted_loss
-from lossbench.metrics.sensitivity import cost_sensitivity_curves
 from lossbench.report.frontier import frontier_report
 from lossbench.runners import make_runner, make_stub_runner
+from lossbench.runners.baselines import BASELINE_MODELS
+from lossbench.runners.budget import BudgetedRunner, BudgetExceeded, BudgetTracker
+from lossbench.runners.retry import RetryingRunner
 from lossbench.schema import Severity
 
 TRAIN_SEED = 101
@@ -45,27 +47,48 @@ MODEL_IDS = [
 ]
 
 
-def _runner_for(model_id: str, tasks, use_stub: bool):
+def _runner_for(model_id: str, tasks, use_stub: bool, tracker=None, base_url=None):
+    """Build the runner for one model.
+
+    The stub is gold-keyed by task id, so it bypasses the prompt entirely
+    and every model scores perfectly; it is a pipeline smoke path, never a
+    result. Real runners are wrapped in BudgetedRunner so one ceiling
+    covers the whole run rather than one ceiling per model.
+    """
     if use_stub:
         return make_stub_runner(
             model_id, {t.id: json.dumps(t.gold, sort_keys=True) for t in tasks}
         )
-    return make_runner(
+    pricing = BASELINE_MODELS.get(model_id, {})
+    runner = make_runner(
         "openai_compat",
-        model_id=os.environ.get("LOSSBENCH_MODEL_ID", model_id),
-        base_url=os.environ.get("LOSSBENCH_BASE_URL"),
+        model_id=model_id,
+        base_url=base_url or os.environ.get("LOSSBENCH_BASE_URL"),
         api_key_env="LOSSBENCH_API_KEY",
+        cost_per_1k_in=pricing.get("cost_per_1k_in", 0.0),
+        cost_per_1k_out=pricing.get("cost_per_1k_out", 0.0),
     )
+    runner = RetryingRunner(runner)
+    return runner if tracker is None else BudgetedRunner(runner, tracker)
 
 
-def _evaluate_model(model_id: str, seed: int, n_tasks: int, trials: int, use_stub: bool):
+def _evaluate_model(
+    model_id: str,
+    seed: int,
+    n_tasks: int,
+    trials: int,
+    use_stub: bool,
+    max_steps: int = 8,
+    tracker=None,
+    base_url=None,
+):
     """Evaluate one model across all domains; returns (tasks, results, summary)."""
     tasks = []
     results = []
     for domain in DOMAINS:
         domain_tasks = generate_suite(domain, seed=seed, n_tasks=n_tasks // len(DOMAINS))
-        runner = _runner_for(model_id, domain_tasks, use_stub)
-        harness = EvalHarness(runner)
+        runner = _runner_for(model_id, domain_tasks, use_stub, tracker, base_url)
+        harness = EvalHarness(runner, max_steps=max_steps)
         tasks.extend(domain_tasks)
         results.extend(harness.run_suite(domain_tasks, trials=trials, seed=1))
     return tasks, results, summarize_suite(results)
@@ -119,6 +142,25 @@ Run: `uv run python -m scripts.full_run`
     )
 
 
+def _honest_limits(use_stub: bool) -> list[str]:
+    """Limits that match the run that actually happened."""
+    limits = [
+        "synthetic data only; severity costs are contested, sourced inputs",
+        "sensitivity curves use synthetic per-model error patterns as a "
+        "metric demonstration, not model measurements",
+    ]
+    if use_stub:
+        limits.insert(
+            1,
+            "STUB RUN: the runner is gold-keyed by task id, so every model "
+            "scores perfectly by construction. These are not model results. "
+            "Set LOSSBENCH_API_KEY for real inference.",
+        )
+    else:
+        limits.insert(1, "single run, one seed; parse failures count as misses")
+    return limits
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=Path("artifacts"))
@@ -126,11 +168,35 @@ def main() -> None:
     parser.add_argument("--n-tasks", type=int, default=300)
     parser.add_argument("--trials", type=int, default=3)
     parser.add_argument("--cost-model", default="reconciliation")
+    parser.add_argument(
+        "--models",
+        default=None,
+        help="comma-separated model ids to evaluate (default: the placeholder set)",
+    )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=8,
+        help="corrective retries per task; keep low for paid runs",
+    )
+    parser.add_argument(
+        "--max-cost",
+        type=float,
+        default=0.0,
+        help="hard USD ceiling for the whole run; 0 means unlimited",
+    )
+    parser.add_argument("--base-url", default=None, help="OpenAI-compatible endpoint")
     args = parser.parse_args()
+    model_ids = (
+        [m.strip() for m in args.models.split(",") if m.strip()]
+        if args.models
+        else list(MODEL_IDS)
+    )
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "model_cards").mkdir(exist_ok=True)
 
     use_stub = "LOSSBENCH_API_KEY" not in os.environ
+    tracker = None if use_stub else BudgetTracker(args.max_cost)
     ledger = AuditLedger(str(args.out / "workload.duckdb"))
 
     model_rows = []
@@ -140,16 +206,32 @@ def main() -> None:
         [Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL] * 50
     )
 
-    for model_id in MODEL_IDS:
-        tasks, results, summary = _evaluate_model(
-            model_id, args.seed, args.n_tasks, args.trials, use_stub
-        )
+    for model_id in model_ids:
+        try:
+            tasks, results, summary = _evaluate_model(
+                model_id,
+                args.seed,
+                args.n_tasks,
+                args.trials,
+                use_stub,
+                max_steps=args.max_steps,
+                tracker=tracker,
+                base_url=args.base_url,
+            )
+        except BudgetExceeded as exc:
+            print(f"  ABORT before finishing {model_id}: {exc}")
+            break
         for trial in results:
             for event in trial.events:
                 ledger.append(event)
         loss = _severity_weighted_loss(tasks, results, args.trials, args.cost_model)
         losses[model_id] = round(loss, 4)
-        confs = [0.9 if r.success else 0.1 for r in results]
+        # Confidence comes from the model's own answer (harness._confidence).
+        # Deriving it from correctness here would make ECE a constant.
+        confs = [
+            trial.events[-1].calibrated_probability if trial.events else 0.5
+            for trial in results
+        ]
         correct = [r.success for r in results]
         ece_results[model_id] = {**ece(confs, correct), "n": len(results)}
         model_rows.append(
@@ -159,6 +241,8 @@ def main() -> None:
                 "pass_at_k": summary["pass_at_k"],
                 "pass_k": summary["pass_k"],
                 "false_success_rate": summary["false_success_rate"],
+                "parse_rate": summary["parse_rate"],
+                "error_rate": summary["error_rate"],
                 "severity_weighted_loss": round(loss, 4),
                 "ece": ece_results[model_id]["ece"],
                 "total_cost": summary["total_cost"],
@@ -169,27 +253,22 @@ def main() -> None:
             args.out / "model_cards" / f"{model_id}.md", model_id, summary, loss
         )
         print(f"  {model_id}: pass@1={summary['pass_at_1']:.3f} "
-              f"pass^k={summary['pass_k']:.3f} loss={loss:.4f}")
+              f"pass^k={summary['pass_k']:.3f} parse={summary['parse_rate']:.3f} "
+              f"err={summary['error_rate']:.3f} loss={loss:.4f}")
 
     patterns = {
         m: {
             "errors": [i % 9 == 0 for i in range(200)],
             "severities_mix": {"LOW": 0.3, "MEDIUM": 0.3, "HIGH": 0.3, "CRITICAL": 0.1},
         }
-        for m in MODEL_IDS
+        for m in model_ids
     }
     report, markdown = frontier_report(
         model_losses=losses,
         severities=severities_for_sensitivity,
         model_error_patterns=patterns,
         ece_results=ece_results,
-        honest_limits=[
-            "synthetic data only; severity costs are contested, sourced inputs",
-            "severity-weighted loss reflects stub-runner results (all models "
-            "perfect); real inference replaces this when LOSSBENCH_API_KEY is set",
-            "sensitivity curves use synthetic per-model error patterns as a "
-            "metric demonstration, not model measurements",
-        ],
+        honest_limits=_honest_limits(use_stub),
         suite="finance-v1",
         cost_model=args.cost_model,
     )
@@ -217,6 +296,8 @@ def main() -> None:
     print(f"  report.md                     {len(markdown.splitlines())} lines")
     print(f"  contamination certificate:    valid={certificate['valid']}")
     print(f"  ledger verify:                {ledger.verify()}")
+    if tracker is not None:
+        print(f"  spend:                        ${tracker.spent:.4f}")
 
 
 if __name__ == "__main__":
