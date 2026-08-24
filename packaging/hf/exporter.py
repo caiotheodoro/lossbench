@@ -56,6 +56,8 @@ def build_dataset_card(
     contamination_policy: str,
     reproducibility_notes: str,
     contact: str,
+    results_table: str = "No model results published for this revision yet.",
+    honest_limits: str = "- synthetic tasks; severity costs are contested inputs",
 ) -> str:
     """Render the dataset card markdown from the bundled template.
 
@@ -74,6 +76,8 @@ def build_dataset_card(
         contamination_policy=contamination_policy,
         reproducibility_notes=reproducibility_notes,
         contact=contact,
+        results_table=results_table,
+        honest_limits=honest_limits,
     )
 
 

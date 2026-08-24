@@ -1,3 +1,30 @@
+---
+license: $license_name
+pretty_name: $benchmark_id
+language:
+  - en
+task_categories:
+  - text-generation
+size_categories:
+  - 1K<n<10K
+tags:
+  - finance
+  - back-office
+  - agents
+  - expected-loss
+  - severity-weighted
+  - verifier-as-oracle
+  - structured-outputs
+configs:
+  - config_name: default
+    default: true
+    data_files:
+      - split: eval
+        path: data/eval.jsonl
+      - split: train
+        path: data/train.jsonl
+---
+
 # $benchmark_id
 
 $description
@@ -40,6 +67,14 @@ Loss numbers therefore depend on the chosen cost model, and conclusions must
 be shown across a K range — sweeping the severity-cost scale as well as the
 pass@k window — so that rankings do not silently depend on one arbitrary
 operating point.
+
+## Results
+
+$results_table
+
+## Honest limits
+
+$honest_limits
 
 ## Contamination policy
 

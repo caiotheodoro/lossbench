@@ -22,6 +22,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "gradio>=6.24.0",
+    "huggingface-hub>=0.34",
     "opentelemetry-sdk>=1.44.0",
     "pytest>=8.0",
     "ruff>=0.5",

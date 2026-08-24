@@ -23,7 +23,17 @@ from lossbench.schema import PolicyBundle
 
 
 def _gold_text(task: Any) -> str:
-    return json.dumps(task.gold, sort_keys=True)
+    """Gold answer plus a confidence spread across the workload.
+
+    The recorded workload is a stub replay, so confidence is derived from
+    task difficulty rather than measured. Without a spread every event
+    carries the same probability and no threshold change can flip a
+    decision, which makes the replay slider inert.
+    """
+    return json.dumps(
+        {**task.gold, "confidence": round(1.0 - float(task.difficulty), 3)},
+        sort_keys=True,
+    )
 
 
 def build_workload(seed: int = 7, n_tasks: int = 200) -> tuple[list[Any], AuditLedger]:
@@ -109,14 +119,20 @@ def _diff_rows(outcome: ReplayOutcome) -> list[list[str]]:
 
 
 def _on_replay(
-    policy_threshold: float, new_threshold: float, cost_model: str
+    policy_threshold: float,
+    new_threshold: float,
+    cost_model: str,
+    n_tasks: int = 200,
 ) -> tuple[str, list[list[str]]]:
-    events = _workload(7, 200)
-    result = simulate_ui(events, policy_threshold, new_threshold, cost_model)
+    """Replay once and render both outputs from the single outcome.
+
+    Simulating twice per click doubled the work for identical results.
+    """
+    events = _workload(7, int(n_tasks))
     outcome = _lab(cost_model).simulate(
         events, _policy(cost_model, policy_threshold), new_threshold
     )
-    return result["markdown"], _diff_rows(outcome)
+    return _render(outcome, len(events)), _diff_rows(outcome)
 
 
 def demo() -> gr.Blocks:
@@ -127,14 +143,19 @@ def demo() -> gr.Blocks:
         gr.Markdown(
             "## LossBench control plane\n"
             "Re-run last month's reconciliation workload under a different "
-            "escalation threshold — no model calls, fully deterministic."
+            "escalation threshold — no model calls, fully deterministic.\n\n"
+            "This is a recorded stub workload, so the confidences are derived "
+            "from task difficulty rather than measured from a model."
         )
         with gr.Row():
             policy_threshold = gr.Slider(
                 0.0, 1.0, value=0.5, step=0.01, label="Last month's policy threshold"
             )
-            new_threshold = gr.Slider(0.0, 1.0, value=0.9, step=0.01, label="New threshold")
+            new_threshold = gr.Slider(0.0, 1.0, value=0.7, step=0.01, label="New threshold")
             cost_model = gr.Dropdown(profiles, value="reconciliation", label="Cost model")
+        workload_size = gr.Slider(
+            20, 400, value=200, step=20, label="Workload size (tasks)"
+        )
         replay = gr.Button("Replay")
         outcome_markdown = gr.Markdown()
         per_case_frame = gr.Dataframe(
@@ -143,7 +164,7 @@ def demo() -> gr.Blocks:
         )
         replay.click(
             _on_replay,
-            inputs=[policy_threshold, new_threshold, cost_model],
+            inputs=[policy_threshold, new_threshold, cost_model, workload_size],
             outputs=[outcome_markdown, per_case_frame],
         )
     return blocks

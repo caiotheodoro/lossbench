@@ -1,0 +1,4 @@
+# lossbench is not on PyPI; install from source. Pin a revision before any
+# published demo so the Space cannot drift with main.
+lossbench @ git+https://github.com/caiotheodoro/lossbench.git@main
+gradio>=6.24.0

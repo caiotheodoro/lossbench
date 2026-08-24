@@ -12,12 +12,13 @@ manifest, the dataset card template, and the programmatic builders in
 | `eval.yaml` | Registration manifest consumed by the Hugging Face Hub |
 | `dataset_card_template.md` | Card template; render it with `build_dataset_card` and commit as the dataset repo's `README.md` |
 | `exporter.py` | `build_eval_yaml`, `build_dataset_card`, `validate_eval_yaml`, `tasks_to_jsonl` |
+| `publish.py` | Builds the payload and uploads it; the only code here that writes to the Hub |
+| `publish_space.py` | Publishes the control-plane demo Space |
 | `README.md` | This file: publish procedure |
 
 ## Dataset repo layout
 
-Create a dataset repo named `LossBench/lossbench` (own org: `OWNER/lossbench`)
-with this layout:
+The dataset lives at `caiotheodoro/lossbench-finance-v1` and has this layout:
 
 ```
 lossbench/
@@ -27,16 +28,23 @@ lossbench/
 │   ├── eval.jsonl         # canonical eval-set export
 │   └── train.jsonl        # fine-tune split
 └── results/
-    └── eval-results.json  # scores written by community eval runs
+    ├── leaderboard.json   # scores from the most recent real run
+    └── report.md          # losses, sensitivity curves, honest limits
 ```
 
-Publish procedure:
+Publish procedure — `publish.py` does all of it:
 
-1. `huggingface-cli login`
-2. `git clone https://huggingface.co/datasets/LossBench/lossbench`
-3. Copy `eval.yaml` to the repo root and the rendered card to `README.md`.
-4. Export tasks with `tasks_to_jsonl(tasks, "data/eval.jsonl")` and commit.
-5. `huggingface-cli upload LossBench/lossbench . .`
+```sh
+hf auth login                                    # or set HF_TOKEN
+uv run python packaging/hf/publish.py --dry-run  # build locally, inspect
+uv run python packaging/hf/publish.py            # create repo and upload
+```
+
+It regenerates both splits from their seeds, refuses to upload unless the
+train/eval signature overlap is exactly 0.0, and renders the card with the
+results of the most recent real run. A stub run is never rendered as results:
+the stub is gold-keyed by task id, so every model scores perfectly by
+construction, and the card says so instead of showing a table.
 
 ## How eval.yaml registers the benchmark
 

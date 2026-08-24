@@ -1065,6 +1065,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "gradio" },
+    { name = "huggingface-hub" },
     { name = "opentelemetry-sdk" },
     { name = "pytest" },
     { name = "ruff" },
@@ -1090,6 +1091,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "gradio", specifier = ">=6.24.0" },
+    { name = "huggingface-hub", specifier = ">=0.34" },
     { name = "opentelemetry-sdk", specifier = ">=1.44.0" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "ruff", specifier = ">=0.5" },

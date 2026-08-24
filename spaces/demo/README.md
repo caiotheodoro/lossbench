@@ -1,3 +1,16 @@
+---
+title: LossBench Control Plane
+emoji: 📉
+colorFrom: indigo
+colorTo: gray
+sdk: gradio
+sdk_version: 6.24.0
+app_file: app.py
+pinned: false
+license: apache-2.0
+short_description: Re-run last month's workload under a different risk policy
+---
+
 # LossBench control plane — interactive demo Space
 
 The flagship "re-run last month" demo: replay a recorded reconciliation
@@ -22,20 +35,20 @@ Space adds only presentation. No API keys, no network calls.
 
 ## How to publish
 
-1. Install dependencies: `uv sync` at the repo root (gradio is a dev
-   dependency).
-2. Create a new Space at <https://huggingface.co/new-space> — SDK: Gradio,
-   CPU hardware (free tier is plenty).
-3. Upload the repo, pointing the Space's app file at
-   `spaces/demo/demo.py` (or rename it to `app.py`).
-4. Provide a `requirements.txt` with:
+Publishing is automated:
 
-   ```text
-   lossbench @ git+https://github.com/<org>/regretbench.git@main
-   gradio>=6.24
-   ```
+```sh
+uv run python packaging/hf/publish_space.py --dry-run
+uv run python packaging/hf/publish_space.py --repo caiotheodoro/lossbench-demo
+```
 
-5. Launch. Output is deterministic for every viewer.
+It uploads `demo.py` as `app.py` (the name the front matter declares),
+alongside `requirements.txt` and this README. The front matter above supplies
+the SDK and version, so the Space resolves without any manual setup.
+
+Dependencies come from `requirements.txt`: `lossbench` is not on PyPI, so it
+installs from the GitHub repo. Pin a revision there before publishing so the
+Space cannot drift with `main`.
 
 To run locally: `uv run python spaces/demo/demo.py`, or run the same
 functions headlessly via `build_workload` and `simulate_ui`.

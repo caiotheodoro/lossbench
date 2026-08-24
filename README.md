@@ -28,7 +28,7 @@ LossBench Control exposes five integration surfaces:
 
 ```sh
 make install          # uv sync + env fixes (see Makefile)
-make validate         # ruff + 298 tests
+make validate         # ruff + 406 tests
 ```
 
 ## Quick start
@@ -108,4 +108,4 @@ print(outcome.total_before, outcome.total_after, len(outcome.per_case_diff))
 
 ## License
 
-Apache 2.0 (pending — see repo).
+Apache 2.0. See `LICENSE`.

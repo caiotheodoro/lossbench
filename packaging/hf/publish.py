@@ -1,0 +1,265 @@
+"""Publish the LossBench suite to the Hugging Face Hub.
+
+The only code in this repo that writes to the Hub. Everything it uploads is
+regenerated from seeds at publish time, so the dataset is a pure function of
+(generator version, seed, n_tasks) rather than a blob that has to be trusted.
+
+    uv run python -m packaging.hf.publish --dry-run
+    uv run python -m packaging.hf.publish --repo caiotheodoro/lossbench-finance-v1
+
+Requires HF_TOKEN in the environment, or a prior `hf auth login`.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import shutil
+import sys
+from pathlib import Path
+
+from lossbench.contamination.monitor import monitor_report
+from lossbench.costs.registry import load_cost_profile
+from lossbench.generate import DOMAINS, generate_suite
+from lossbench.schema import Severity
+
+_HERE = Path(__file__).resolve().parent
+_REPO_ROOT = _HERE.parents[1]
+
+TRAIN_SEED = 101
+EVAL_SEED = 777
+DEFAULT_REPO = "caiotheodoro/lossbench-finance-v1"
+LICENSE = "cc-by-4.0"
+COST_MODELS = ["flat", "reconciliation", "principal_risk", "review_heavy"]
+SEVERITY_BANDS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+
+
+def _load_exporter():
+    """Load the sibling exporter by path; packaging/ is not an importable package."""
+    spec = importlib.util.spec_from_file_location(
+        "lossbench_hf_exporter", _HERE / "exporter.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _suite(seed: int, per_domain: int):
+    tasks = []
+    for domain in DOMAINS:
+        tasks.extend(generate_suite(domain, seed=seed, n_tasks=per_domain))
+    return tasks
+
+
+def _results_table(leaderboard: Path) -> tuple[str, str]:
+    """Render the results table and its provenance line from a real run.
+
+    Returns the "no results" placeholder when the run was a stub, because a
+    stub run is gold-keyed by task id and every model scores perfectly by
+    construction. Those numbers are not model results and must never ship.
+    """
+    if not leaderboard.exists():
+        return ("No model results published for this revision yet.", "")
+    data = json.loads(leaderboard.read_text(encoding="utf-8"))
+    if data.get("runner") != "openai_compat" or not data.get("models"):
+        return (
+            "No model results published for this revision yet. The only local "
+            "run used the gold-keyed stub runner, which scores every model "
+            "perfectly by construction.",
+            "",
+        )
+    rows = sorted(data["models"], key=lambda r: r["severity_weighted_loss"])
+    header = (
+        "| Model | Expected loss | pass@1 | pass^k | ECE | Parse | Errors |\n"
+        "|---|---:|---:|---:|---:|---:|---:|\n"
+    )
+    body = "".join(
+        f"| `{r['model_id']}` | {r['severity_weighted_loss']:.4f} "
+        f"| {r['pass_at_1']:.3f} | {r['pass_k']:.3f} "
+        f"| {r.get('ece', float('nan')):.3f} "
+        f"| {r.get('parse_rate', float('nan')):.3f} "
+        f"| {r.get('error_rate', 0.0):.3f} |\n"
+        for r in rows
+    )
+    note = (
+        f"\nRanked by expected loss under the `{data['cost_model']}` cost model, "
+        f"lower is better. Seed {EVAL_SEED}, generated {data['generated_at']}, "
+        f"runner `{data['runner']}`.\n\n"
+        "- **Expected loss** charges each unreviewed error the severity cost "
+        "`K` of the task it got wrong, so a HIGH miss outweighs a pile of LOW "
+        "ones. It is not accuracy.\n"
+        "- **ECE** is measured against the `confidence` each model reports in "
+        "its own answer, which is never graded against the answer key.\n"
+        "- **Parse** failures and **errors** both count as misses. Errors are "
+        "gateway failures, not model mistakes, and are listed separately so "
+        "they cannot be read as one.\n"
+        "- Token cost is deliberately omitted: the repo prices runs from a "
+        "placeholder rate table, not from what the gateway actually billed.\n"
+    )
+    return header + body + note, data["generated_at"]
+
+
+def _honest_limits(has_results: bool) -> str:
+    limits = [
+        "Tasks are generated, not observed. They are representative of "
+        "back-office workloads by construction and citation, not by sampling.",
+        "Severity costs are contested inputs, not constants. Every conclusion "
+        "must be shown across a range of cost models.",
+        "Ground truth is mechanical: the verifier recomputes the answer from "
+        "`initial_state` alone and a task is only kept when it agrees, so "
+        "verifier agreement is enforced at generation rather than measured.",
+        "The decision rules are stated in each prompt. This benchmark measures "
+        "whether a model applies a published policy to structured data, not "
+        "whether it can guess an unpublished convention.",
+    ]
+    if has_results:
+        limits.append(
+            "Results are a single run on one seed against one gateway. Small n; "
+            "treat the absolute numbers as indicative, not as a leaderboard."
+        )
+    return "\n".join(f"- {line}" for line in limits)
+
+
+def build_payload(out: Path, per_domain: int, artifacts: Path) -> dict:
+    """Materialize everything the Hub repo will contain, under `out`."""
+    exporter = _load_exporter()
+    (out / "data").mkdir(parents=True, exist_ok=True)
+
+    eval_tasks = _suite(EVAL_SEED, per_domain)
+    train_tasks = _suite(TRAIN_SEED, per_domain)
+    exporter.tasks_to_jsonl(eval_tasks, str(out / "data" / "eval.jsonl"))
+    exporter.tasks_to_jsonl(train_tasks, str(out / "data" / "train.jsonl"))
+
+    check = monitor_report(train_tasks, eval_tasks)
+    certificate = {
+        "train_seed": TRAIN_SEED,
+        "eval_seed": EVAL_SEED,
+        "train_tasks": len(train_tasks),
+        "eval_tasks": len(eval_tasks),
+        "signature_overlap": check["overlap"],
+        "clean": check["false_fire"],
+        "valid": check["overlap"] == 0.0,
+    }
+    if not certificate["valid"]:
+        raise SystemExit(
+            f"refusing to publish: train/eval signature overlap is "
+            f"{check['overlap']}, expected 0.0"
+        )
+    (out / "contamination_certificate.json").write_text(
+        json.dumps(certificate, indent=2) + "\n", encoding="utf-8"
+    )
+
+    results_table, generated_at = _results_table(artifacts / "leaderboard.json")
+    for name in ("leaderboard.json", "report.md"):
+        source = artifacts / name
+        if source.exists() and generated_at:
+            (out / "results").mkdir(exist_ok=True)
+            shutil.copyfile(source, out / "results" / name)
+
+    weights = {
+        cm: {band: load_cost_profile(cm).cost(Severity(band)) for band in SEVERITY_BANDS}
+        for cm in COST_MODELS
+    }
+    (out / "cost_models.json").write_text(
+        json.dumps(weights, indent=2, default=str) + "\n", encoding="utf-8"
+    )
+
+    card = exporter.build_dataset_card(
+        benchmark_id="LossBench finance-v1",
+        description=(
+            "Severity-weighted expected-loss evaluation for agents that touch "
+            "money. Three finance back-office domains, mechanical ground truth, "
+            "and a contamination certificate. Models are ranked by what their "
+            "mistakes cost, not by raw accuracy."
+        ),
+        license_name=LICENSE,
+        task_count=len(eval_tasks) + len(train_tasks),
+        domains=list(DOMAINS),
+        severity_taxonomy=SEVERITY_BANDS,
+        cost_model_ids=COST_MODELS,
+        contamination_policy=(
+            f"Train is seed {TRAIN_SEED}, eval is seed {EVAL_SEED}. A task "
+            "signature is a SHA-256 over every field except `id`, `seed` and "
+            "`signature`, so a renumbered copy of the same content still "
+            f"collides. Measured overlap between the two splits is "
+            f"{check['overlap']}. Publishing is refused if it is anything else. "
+            "Signatures are excluded from the published rows so the eval set "
+            "cannot be fingerprinted from this dataset alone."
+        ),
+        reproducibility_notes=(
+            "Every row is a pure function of (generator version, domain, seed, "
+            "index). Regenerate with `generate_suite(domain, seed, n_tasks)` "
+            "from https://github.com/caiotheodoro/lossbench. The same seed "
+            "yields byte-identical tasks, which the repo enforces as a CI gate. "
+            "Because identity is code-version dependent, cite a revision rather "
+            "than `main`."
+        ),
+        contact="https://github.com/caiotheodoro/lossbench/issues",
+        results_table=results_table,
+        honest_limits=_honest_limits(bool(generated_at)),
+    )
+    (out / "README.md").write_text(card, encoding="utf-8")
+
+    eval_yaml = exporter.build_eval_yaml(
+        benchmark_id="lossbench",
+        description="Severity-weighted expected loss for finance back-office agents",
+        task_types=["text-generation"],
+        metric="severity_weighted_loss",
+        dataset_repo=DEFAULT_REPO,
+    )
+    exporter.validate_eval_yaml(eval_yaml)
+    import yaml as _yaml
+
+    (out / "eval.yaml").write_text(
+        _yaml.safe_dump(eval_yaml, sort_keys=False), encoding="utf-8"
+    )
+    return certificate
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo", default=DEFAULT_REPO)
+    parser.add_argument("--per-domain", type=int, default=400)
+    parser.add_argument("--artifacts", type=Path, default=_REPO_ROOT / "artifacts")
+    parser.add_argument("--out", type=Path, default=Path("/tmp/lossbench-hf"))
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="build the payload locally and stop before touching the Hub",
+    )
+    args = parser.parse_args()
+
+    if args.out.exists():
+        shutil.rmtree(args.out)
+    certificate = build_payload(args.out, args.per_domain, args.artifacts)
+
+    print(f"payload built in {args.out}")
+    for path in sorted(args.out.rglob("*")):
+        if path.is_file():
+            print(f"  {path.relative_to(args.out)}  {path.stat().st_size:,} bytes")
+    print(f"  contamination: overlap={certificate['signature_overlap']} valid=True")
+
+    if args.dry_run:
+        print("dry run: nothing uploaded")
+        return
+
+    from huggingface_hub import HfApi
+
+    api = HfApi()
+    api.create_repo(args.repo, repo_type="dataset", exist_ok=True)
+    api.upload_folder(
+        repo_id=args.repo,
+        repo_type="dataset",
+        folder_path=str(args.out),
+        commit_message=(
+            f"finance-v1: {certificate['eval_tasks']} eval / "
+            f"{certificate['train_tasks']} train, overlap 0.0"
+        ),
+    )
+    print(f"published https://huggingface.co/datasets/{args.repo}")
+
+
+if __name__ == "__main__":
+    main()

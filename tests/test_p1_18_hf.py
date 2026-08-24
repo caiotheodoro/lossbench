@@ -159,3 +159,39 @@ def test_card_deterministic():
     first = _card()
     second = _card()
     assert first == second
+
+
+def test_card_has_yaml_front_matter():
+    """Without front matter the Hub shows the dataset untagged and unlicensed."""
+    card = _card()
+    assert card.startswith("---\n")
+    body = card.split("---\n", 2)
+    assert len(body) == 3, "card must open with a closed YAML front-matter block"
+    meta = yaml.safe_load(body[1])
+    assert meta["license"] == "cc-by-4.0"
+    assert "text-generation" in meta["task_categories"]
+    assert meta["pretty_name"]
+    assert meta["tags"]
+
+
+def test_card_front_matter_declares_both_splits():
+    meta = yaml.safe_load(_card().split("---\n", 2)[1])
+    configs = meta["configs"]
+    assert len(configs) == 1
+    splits = {entry["split"]: entry["path"] for entry in configs[0]["data_files"]}
+    assert splits == {"eval": "data/eval.jsonl", "train": "data/train.jsonl"}
+
+
+def test_card_renders_every_placeholder():
+    """string.Template.substitute leaves no $placeholder behind."""
+    assert "$" not in _card()
+
+
+def test_tasks_to_jsonl_excludes_the_signature(tmp_path):
+    """Signature exclusion is the stated contamination guarantee."""
+    import json as _json
+
+    out = tmp_path / "tasks.jsonl"
+    exporter.tasks_to_jsonl([_task(0)], str(out))
+    record = _json.loads(out.read_text(encoding="utf-8").splitlines()[0])
+    assert "signature" not in record
