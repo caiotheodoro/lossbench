@@ -71,34 +71,88 @@ def _results_table(leaderboard: Path) -> tuple[str, str]:
             "",
         )
     rows = sorted(data["models"], key=lambda r: r["severity_weighted_loss"])
+    # Only render columns every row actually carries. A run that was stopped
+    # before the summary was written has no ECE or parse rate, and printing
+    # "nan" would read as a measured value.
+    optional = [("ece", "ECE"), ("parse_rate", "Parse"), ("error_rate", "Errors")]
+    extra = [(key, label) for key, label in optional if all(key in r for r in rows)]
     header = (
-        "| Model | Expected loss | pass@1 | pass^k | ECE | Parse | Errors |\n"
-        "|---|---:|---:|---:|---:|---:|---:|\n"
+        "| Model | Expected loss | pass@1 | pass^k | False-success"
+        + "".join(f" | {label}" for _, label in extra)
+        + " |\n|---|---:|---:|---:|---:"
+        + "".join("|---:" for _ in extra)
+        + "|\n"
     )
     body = "".join(
         f"| `{r['model_id']}` | {r['severity_weighted_loss']:.4f} "
         f"| {r['pass_at_1']:.3f} | {r['pass_k']:.3f} "
-        f"| {r.get('ece', float('nan')):.3f} "
-        f"| {r.get('parse_rate', float('nan')):.3f} "
-        f"| {r.get('error_rate', 0.0):.3f} |\n"
+        f"| {r['false_success_rate']:.3f}"
+        + "".join(f" | {r[key]:.3f}" for key, _ in extra)
+        + " |\n"
         for r in rows
     )
+    shape = ""
+    if data.get("n_tasks"):
+        shape = (
+            f" {data['n_tasks']} tasks x {data.get('trials', 1)} trials, "
+            f"single-shot ({data.get('max_steps', 1)} step, no corrective retry)"
+            + (f", via {data['endpoint']}" if data.get("endpoint") else "")
+            + "."
+        )
+    partial = f"\n\n**{data['partial_note']}**" if data.get("partial") else ""
     note = (
         f"\nRanked by expected loss under the `{data['cost_model']}` cost model, "
         f"lower is better. Seed {EVAL_SEED}, generated {data['generated_at']}, "
-        f"runner `{data['runner']}`.\n\n"
+        f"runner `{data['runner']}`.{shape}{partial}\n\n"
         "- **Expected loss** charges each unreviewed error the severity cost "
         "`K` of the task it got wrong, so a HIGH miss outweighs a pile of LOW "
         "ones. It is not accuracy.\n"
-        "- **ECE** is measured against the `confidence` each model reports in "
-        "its own answer, which is never graded against the answer key.\n"
-        "- **Parse** failures and **errors** both count as misses. Errors are "
-        "gateway failures, not model mistakes, and are listed separately so "
-        "they cannot be read as one.\n"
         "- Token cost is deliberately omitted: the repo prices runs from a "
         "placeholder rate table, not from what the gateway actually billed.\n"
     )
+    shown = {key for key, _ in extra}
+    if "ece" in shown:
+        note += (
+            "- **ECE** is measured against the `confidence` each model reports "
+            "in its own answer, which is never graded against the answer key.\n"
+        )
+    if shown & {"parse_rate", "error_rate"}:
+        note += (
+            "- **Parse** failures and **errors** both count as misses. Errors "
+            "are gateway failures, not model mistakes, and are listed "
+            "separately so they cannot be read as one.\n"
+        )
+    divergence = _divergence_note(rows)
+    if divergence:
+        note += "\n" + divergence + "\n"
     return header + body + note, data["generated_at"]
+
+
+def _divergence_note(rows: list[dict]) -> str:
+    """Call out any pair where accuracy and expected loss disagree.
+
+    This is the benchmark's whole claim, so if a run demonstrates it the card
+    should say which pair rather than leave a reader to spot it in the table.
+    """
+    for better in rows:
+        for worse in rows:
+            if better is worse:
+                continue
+            more_accurate = worse["pass_at_1"] > better["pass_at_1"]
+            costs_more = worse["severity_weighted_loss"] > better["severity_weighted_loss"]
+            if more_accurate and costs_more:
+                floor = max(better["severity_weighted_loss"], 1e-9)
+                ratio = worse["severity_weighted_loss"] / floor
+                return (
+                    f"`{worse['model_id']}` answers more of the suite correctly than "
+                    f"`{better['model_id']}` ({worse['pass_at_1']:.3f} vs "
+                    f"{better['pass_at_1']:.3f}) and still costs {ratio:.1f}x as much "
+                    f"({worse['severity_weighted_loss']:.1f} vs "
+                    f"{better['severity_weighted_loss']:.1f}), because its mistakes land "
+                    "on higher-severity tasks. Accuracy and expected loss rank these two "
+                    "in opposite orders, which is the reason this benchmark exists."
+                )
+    return ""
 
 
 def _honest_limits(has_results: bool) -> str:
@@ -151,12 +205,17 @@ def build_payload(out: Path, per_domain: int, artifacts: Path) -> dict:
         json.dumps(certificate, indent=2) + "\n", encoding="utf-8"
     )
 
-    results_table, generated_at = _results_table(artifacts / "leaderboard.json")
-    for name in ("leaderboard.json", "report.md"):
-        source = artifacts / name
-        if source.exists() and generated_at:
-            (out / "results").mkdir(exist_ok=True)
-            shutil.copyfile(source, out / "results" / name)
+    leaderboard = artifacts / "leaderboard.json"
+    results_table, generated_at = _results_table(leaderboard)
+    if generated_at:
+        (out / "results").mkdir(exist_ok=True)
+        shutil.copyfile(leaderboard, out / "results" / "leaderboard.json")
+        # report.md is only shipped when it belongs to the same run. A
+        # stopped run leaves the previous report in place, and the last one
+        # written here was a stub whose losses are all 0.0000.
+        report = artifacts / "report.md"
+        if report.exists() and report.stat().st_mtime >= leaderboard.stat().st_mtime:
+            shutil.copyfile(report, out / "results" / "report.md")
 
     weights = {
         cm: {band: load_cost_profile(cm).cost(Severity(band)) for band in SEVERITY_BANDS}
