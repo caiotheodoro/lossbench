@@ -134,9 +134,11 @@ def test_missed_high_loss_rate():
 
 
 def test_missed_high_loss_rate_no_high_weight():
+    # No HIGH/CRITICAL error weight exists (only a LOW-severity error) — nothing
+    # was missed, so this is the best case (0.0), not the worst (1.0).
     assert (
         missed_high_loss_rate(
             [True], [Severity.LOW], ASYMMETRIC, escalated=[False]
         )
-        == 1.0
+        == 0.0
     )
