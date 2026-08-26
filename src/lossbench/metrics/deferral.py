@@ -64,7 +64,7 @@ def missed_high_loss_rate(
     An error at severity HIGH or CRITICAL that was neither escalated nor caught
     counts as missed high-severity loss. The denominator is the weight of
     ERRORS only (successful cases never carried loss, so they must not dilute
-    the ratio). Returns 1.0 when no high-severity error weight exists,
+    the ratio). Returns 0.0 when no high-severity error weight exists,
     otherwise missed_weight / total_high_error_weight.
     """
     if not (len(errors) == len(severities) == len(escalated)):
@@ -78,5 +78,5 @@ def missed_high_loss_rate(
             if not esc:
                 missed += k
     if total_high == 0.0:
-        return 1.0
+        return 0.0
     return round(missed / total_high, 4)
