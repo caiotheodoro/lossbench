@@ -271,3 +271,38 @@ def test_results_table_omits_false_success_when_not_applicable_even_if_rate_is_n
     )
     assert "| False-success" not in markdown
     assert "| 0.000" not in markdown
+
+
+def test_coverage_note_stub_run_says_no_results_published():
+    """A stub run (gold-keyed, every model scores perfectly by construction)
+    is not a result -- the Coverage section must not describe it as a real,
+    scored leaderboard, or it contradicts _results_table's own "no results
+    published" line on the same card (issue #1 review)."""
+    note = publish._coverage_note(
+        {"runner": "stub", "models": [{"model_id": "m"}], "n_tasks": 60},
+        eval_task_count=1200,
+    )
+    assert "No leaderboard is published" in note
+    assert "60" not in note
+
+
+def test_coverage_note_real_run_discloses_the_prefix_subset():
+    note = publish._coverage_note(
+        {"runner": "openai_compat", "models": [{"model_id": "m"}], "n_tasks": 60},
+        eval_task_count=1200,
+    )
+    assert "60" in note
+    assert "1200" in note
+
+
+def test_coverage_note_distinguishes_missing_from_zero_n_tasks():
+    missing = publish._coverage_note(
+        {"runner": "openai_compat", "models": [{"model_id": "m"}]}, eval_task_count=1200
+    )
+    assert "unknown" in missing
+    zero = publish._coverage_note(
+        {"runner": "openai_compat", "models": [{"model_id": "m"}], "n_tasks": 0},
+        eval_task_count=1200,
+    )
+    assert "unknown" not in zero
+    assert "0" in zero

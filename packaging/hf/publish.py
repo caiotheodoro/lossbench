@@ -203,18 +203,28 @@ def _coverage_note(data: dict | None, eval_task_count: int) -> str:
     The published leaderboard is scored on a prefix subset of the eval split,
     not the whole thing, so the card has to say so out loud.
     """
-    if not data or not data.get("models"):
+    # Mirror _results_table's own gate: a stub run (gold-keyed, every model
+    # scores perfectly by construction) is not a result either, and must not
+    # get a Coverage section that talks about it as if it were one -- that
+    # would contradict _results_table's own "no results published" line on
+    # the very same card (issue #1 review).
+    if not data or data.get("runner") != "openai_compat" or not data.get("models"):
         return (
             f"No leaderboard is published for this revision. All "
             f"{eval_task_count} eval tasks ship in `data/eval.jsonl`; none have "
             "published scores."
         )
     n = data.get("n_tasks")
-    if not n:
+    if n is None:
         return (
             f"The published leaderboard does not record how many of the "
             f"{eval_task_count} shipped eval tasks it was scored on. Treat its "
             "coverage as unknown."
+        )
+    if n == 0:
+        return (
+            f"The published leaderboard was scored on 0 of the "
+            f"{eval_task_count} shipped eval tasks."
         )
     per_domain = n // len(DOMAINS)
     pct = 100 * n / eval_task_count if eval_task_count else 0
