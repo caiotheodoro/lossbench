@@ -75,13 +75,13 @@ def _results_table(leaderboard: Path) -> tuple[str, str]:
     # before the summary was written has no ECE or parse rate, and printing
     # "nan" would read as a measured value.
     # False-success is only a real measurement for CLAIM_THEN_VERIFY sources
-    # (dsh/langgraph adapters). Harness-scored rows carry a null rate and must
-    # not render a bare 0.0 that reads as a clean bill of health (issue #10).
-    fs_applicable = all(
-        isinstance(r.get("false_success_rate"), (int, float))
-        and not isinstance(r.get("false_success_rate"), bool)
-        for r in rows
-    )
+    # (dsh/langgraph adapters). Harness-scored rows carry false_success_applicable
+    # =False and a null rate; render neither as a bare 0.0 that reads as a clean
+    # bill of health (issue #10). Read the flag full_run.py already computed and
+    # threaded into each row -- don't re-derive it by sniffing the rate's type,
+    # which can silently disagree with the flag if a future source's rate and
+    # applicability signals ever diverge.
+    fs_applicable = all(r.get("false_success_applicable") is True for r in rows)
     optional = [("ece", "ECE"), ("parse_rate", "Parse"), ("error_rate", "Errors")]
     extra = [(key, label) for key, label in optional if all(key in r for r in rows)]
     fs_col = " | False-success" if fs_applicable else ""
