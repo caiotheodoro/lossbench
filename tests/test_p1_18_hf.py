@@ -295,6 +295,58 @@ def test_coverage_note_real_run_discloses_the_prefix_subset():
     assert "1200" in note
 
 
+_OLD_DIVERGENCE_PHRASES = [
+    "answers more of the suite correctly than",
+    "which is the reason this benchmark exists",
+    "rank these two",
+    "x as much",
+]
+
+
+def _divergence_trigger_rows():
+    """Two rows shaped to trip the old bug: the higher-pass@1 model also
+    carries the higher severity_weighted_loss, which is exactly the pair the
+    old _divergence_note would have written up as a demonstrated crossover."""
+    return [
+        {"model_id": "cheap-but-wrong", "severity_weighted_loss": 9.0,
+         "pass_at_1": 0.95, "pass_k": 0.95},
+        {"model_id": "careful", "severity_weighted_loss": 0.5,
+         "pass_at_1": 0.60, "pass_k": 0.60},
+    ]
+
+
+def test_divergence_note_takes_no_rows_and_never_names_a_pair():
+    note = publish._divergence_note()
+    assert "No automated divergence claim" in note
+    assert "issue #18" in note
+    for phrase in _OLD_DIVERGENCE_PHRASES:
+        assert phrase not in note
+
+
+@pytest.mark.parametrize(
+    "models",
+    [
+        _divergence_trigger_rows(),
+        list(reversed(_divergence_trigger_rows())),
+        [{"model_id": "solo", "severity_weighted_loss": 1.0, "pass_at_1": 0.5, "pass_k": 0.5}],
+        [
+            {"model_id": "a", "severity_weighted_loss": 5.0, "pass_at_1": 0.9, "pass_k": 0.9},
+            {"model_id": "b", "severity_weighted_loss": 4.0, "pass_at_1": 0.8, "pass_k": 0.8},
+            {"model_id": "c", "severity_weighted_loss": 3.0, "pass_at_1": 0.7, "pass_k": 0.7},
+        ],
+    ],
+)
+def test_results_table_never_emits_a_per_pair_divergence_claim(tmp_path, models):
+    markdown, _ = publish._results_table(_leaderboard(tmp_path, models))
+    for phrase in _OLD_DIVERGENCE_PHRASES:
+        assert phrase not in markdown
+    for row in models:
+        # no "`model_a` ... than `model_b`" style callout for any pair
+        assert f"`{row['model_id']}` answers" not in markdown
+    assert "No automated divergence claim is asserted from this run." in markdown
+    assert "issue #18" in markdown
+
+
 def test_coverage_note_distinguishes_missing_from_zero_n_tasks():
     missing = publish._coverage_note(
         {"runner": "openai_compat", "models": [{"model_id": "m"}]}, eval_task_count=1200
