@@ -143,37 +143,39 @@ def _results_table(leaderboard: Path) -> tuple[str, str]:
             "are gateway failures, not model mistakes, and are listed "
             "separately so they cannot be read as one.\n"
         )
-    divergence = _divergence_note(rows)
-    if divergence:
-        note += "\n" + divergence + "\n"
+    note += "\n" + _divergence_note() + "\n"
     return header + body + note, data["generated_at"]
 
 
-def _divergence_note(rows: list[dict]) -> str:
-    """Call out any pair where accuracy and expected loss disagree.
+DIVERGENCE_DISCLOSURE = (
+    "**No automated divergence claim is asserted from this run.** The card used "
+    "to name the first model pair whose `pass@1` and expected-loss rankings "
+    "disagreed and call it a demonstrated crossover. That comparison was not "
+    "sound: `pass@1` is scored on trial 0 only while expected loss sums every "
+    "trial, so the two metrics were computed on different samples; and the pair "
+    "was picked as the first of up to a dozen ordered pairs that fit the "
+    "narrative, with no paired significance test and no multiplicity correction. "
+    "The paper's own falsifiability bar for H1 (a crossover ratio inside the "
+    "published range, or the claim is rejected) is not met by that procedure. "
+    "Read the table above and draw your own conclusions until the test that "
+    "clears the bar exists (issue #18)."
+)
 
-    This is the benchmark's whole claim, so if a run demonstrates it the card
-    should say which pair rather than leave a reader to spot it in the table.
+
+def _divergence_note() -> str:
+    """Static disclosure: this repo asserts no automated divergence claim.
+
+    Intentionally takes no arguments and does no per-pair analysis. The old
+    implementation scanned every model pair and wrote the first accuracy/loss
+    disagreement straight into the published card as a demonstrated finding --
+    an unsound different-sample comparison with no significance test or
+    multiplicity correction (issue #3). The correct same-sample metric is
+    `pass_k` (all trials, already computed and present in every row); wire it
+    in here once the paired bootstrap-CI + multiplicity machinery lands in
+    issue #18. Until then this path must be structurally incapable of emitting
+    a per-pair claim, regardless of the rows passed to _results_table.
     """
-    for better in rows:
-        for worse in rows:
-            if better is worse:
-                continue
-            more_accurate = worse["pass_at_1"] > better["pass_at_1"]
-            costs_more = worse["severity_weighted_loss"] > better["severity_weighted_loss"]
-            if more_accurate and costs_more:
-                floor = max(better["severity_weighted_loss"], 1e-9)
-                ratio = worse["severity_weighted_loss"] / floor
-                return (
-                    f"`{worse['model_id']}` answers more of the suite correctly than "
-                    f"`{better['model_id']}` ({worse['pass_at_1']:.3f} vs "
-                    f"{better['pass_at_1']:.3f}) and still costs {ratio:.1f}x as much "
-                    f"({worse['severity_weighted_loss']:.1f} vs "
-                    f"{better['severity_weighted_loss']:.1f}), because its mistakes land "
-                    "on higher-severity tasks. Accuracy and expected loss rank these two "
-                    "in opposite orders, which is the reason this benchmark exists."
-                )
-    return ""
+    return DIVERGENCE_DISCLOSURE
 
 
 def _honest_limits(has_results: bool) -> str:
