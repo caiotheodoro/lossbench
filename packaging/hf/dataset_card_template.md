@@ -72,6 +72,10 @@ operating point.
 
 $results_table
 
+## Coverage
+
+$coverage_note
+
 ## Honest limits
 
 $honest_limits

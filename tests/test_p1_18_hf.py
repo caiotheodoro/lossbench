@@ -18,6 +18,7 @@ _CARD_SECTIONS = [
     "License",
     "Severity taxonomy",
     "Cost models",
+    "Coverage",
     "Contamination policy",
     "Reproducibility",
     "Contact",

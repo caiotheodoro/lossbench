@@ -197,6 +197,42 @@ def _honest_limits(has_results: bool) -> str:
     return "\n".join(f"- {line}" for line in limits)
 
 
+def _coverage_note(data: dict | None, eval_task_count: int) -> str:
+    """Disclose how much of the shipped eval split the leaderboard actually covers.
+
+    The published leaderboard is scored on a prefix subset of the eval split,
+    not the whole thing, so the card has to say so out loud.
+    """
+    if not data or not data.get("models"):
+        return (
+            f"No leaderboard is published for this revision. All "
+            f"{eval_task_count} eval tasks ship in `data/eval.jsonl`; none have "
+            "published scores."
+        )
+    n = data.get("n_tasks")
+    if not n:
+        return (
+            f"The published leaderboard does not record how many of the "
+            f"{eval_task_count} shipped eval tasks it was scored on. Treat its "
+            "coverage as unknown."
+        )
+    per_domain = n // len(DOMAINS)
+    pct = 100 * n / eval_task_count if eval_task_count else 0
+    lines = [
+        f"The published leaderboard covers only the first {n} of the "
+        f"{eval_task_count} eval tasks that ship in `data/eval.jsonl` "
+        f"(~{pct:.0f}%). It is the prefix subset "
+        f"`n_tasks={n}` ({per_domain}/domain), seed "
+        f"{data.get('seed', EVAL_SEED)}, trials {data.get('trials', 1)}, "
+        f"`max_steps={data.get('max_steps', 1)}`, `partial: "
+        f"{str(bool(data.get('partial'))).lower()}`. The remaining eval tasks "
+        "have no published scores.",
+    ]
+    if data.get("partial_note"):
+        lines.append(f"Run note, verbatim: “{data['partial_note']}”")
+    return "\n\n".join(lines)
+
+
 def build_payload(out: Path, per_domain: int, artifacts: Path) -> dict:
     """Materialize everything the Hub repo will contain, under `out`."""
     exporter = _load_exporter()
@@ -228,6 +264,12 @@ def build_payload(out: Path, per_domain: int, artifacts: Path) -> dict:
 
     leaderboard = artifacts / "leaderboard.json"
     results_table, generated_at = _results_table(leaderboard)
+    board_data = (
+        json.loads(leaderboard.read_text(encoding="utf-8"))
+        if leaderboard.exists()
+        else None
+    )
+    coverage_note = _coverage_note(board_data, len(eval_tasks))
     if generated_at:
         (out / "results").mkdir(exist_ok=True)
         shutil.copyfile(leaderboard, out / "results" / "leaderboard.json")
@@ -264,9 +306,14 @@ def build_payload(out: Path, per_domain: int, artifacts: Path) -> dict:
             "signature is a SHA-256 over every field except `id`, `seed` and "
             "`signature`, so a renumbered copy of the same content still "
             f"collides. Measured overlap between the two splits is "
-            f"{check['overlap']}. Publishing is refused if it is anything else. "
-            "Signatures are excluded from the published rows so the eval set "
-            "cannot be fingerprinted from this dataset alone."
+            f"{check['overlap']}, and publishing is refused if it is anything "
+            "else. That signature detects training-set overlap against this "
+            "dataset; it does not detect evaluation gaming.\n\n"
+            "The labels (`gold`, `severity`) ship in plaintext in "
+            "`data/eval.jsonl`. This is an open reference benchmark, not a "
+            "hidden-answer-key benchmark: the eval set can be fingerprinted "
+            "from the published data, and third-party leaderboard submissions "
+            "should be treated as self-reported."
         ),
         reproducibility_notes=(
             "Every row is a pure function of (generator version, domain, seed, "
@@ -278,23 +325,20 @@ def build_payload(out: Path, per_domain: int, artifacts: Path) -> dict:
         ),
         contact="https://github.com/caiotheodoro/lossbench/issues",
         results_table=results_table,
+        coverage_note=coverage_note,
         honest_limits=_honest_limits(bool(generated_at)),
     )
     (out / "README.md").write_text(card, encoding="utf-8")
 
-    eval_yaml = exporter.build_eval_yaml(
-        benchmark_id="lossbench",
-        description="Severity-weighted expected loss for finance back-office agents",
-        task_types=["text-generation"],
-        metric="severity_weighted_loss",
-        dataset_repo=DEFAULT_REPO,
-    )
-    exporter.validate_eval_yaml(eval_yaml)
-    import yaml as _yaml
-
-    (out / "eval.yaml").write_text(
-        _yaml.safe_dump(eval_yaml, sort_keys=False), encoding="utf-8"
-    )
+    # eval.yaml is intentionally NOT emitted. The only manifest shape this repo
+    # can currently produce (id/dataset/task_types/metric/license/paper) is the
+    # exact shape HF rejects at push-time validation -- see section 4.2 of
+    # hf-publication-specs.md. The schema HF actually wants
+    # (name/description/evaluation_framework/tasks[].id) needs `lossbench` added
+    # to HF's `evaluation_framework` enum first, which is blocker B-3. Until B-3
+    # clears we publish as a plain dataset with no eval.yaml rather than ship a
+    # file that fails validation. Do not "fix" this by emitting the new schema
+    # early -- the benchmark listing is still beta + allow-listed.
     return certificate
 
 
