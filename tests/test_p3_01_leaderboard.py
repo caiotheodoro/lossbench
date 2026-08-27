@@ -118,10 +118,45 @@ def test_demo_constructs():
 def test_sample_fixture_loads():
     rows = leaderboard.load_leaderboard(_SAMPLE_PATH)
     assert len(rows) == 3
-    assert rows[0].model_id == "reconforge-1.7b"
-    assert rows[1].model_id == "qwen3-8b"
+    assert [row.model_id for row in rows] == ["demo-model-a", "demo-model-b", "demo-model-c"]
     assert rows[2].pass_k is None
     assert rows[2].ece is None
     assert [row.severity_weighted_loss for row in rows] == sorted(
         row.severity_weighted_loss for row in rows
     )
+
+
+def test_sample_fixture_is_obviously_synthetic():
+    # No fabricated real model IDs, and a loud banner the UI renders as a warning.
+    text = _SAMPLE_PATH.read_text(encoding="utf-8")
+    for forbidden in ("reconforge", "qwen3-8b", "baseline-gpt-4o"):
+        assert forbidden not in text
+    assert leaderboard.load_banner(_SAMPLE_PATH) == "SYNTHETIC DEMO DATA"
+    assert app._banner_md(str(_SAMPLE_PATH)).startswith("> ## ⚠")
+
+
+def test_real_artifact_parses_end_to_end():
+    # The real, committed run artifact must load through the Space loader.
+    artifact = _REPO_ROOT / "artifacts" / "leaderboard.json"
+    assert artifact.exists(), "artifacts/leaderboard.json must be committed"
+    rows = leaderboard.load_leaderboard(artifact)
+    assert rows, "real artifact should yield leaderboard rows"
+    sensitivities, limits = leaderboard._load_extras(artifact)
+    table = leaderboard.render_table(rows)
+    assert table.startswith("| Model |")
+    leaderboard.crossover_summary(sensitivities)
+    leaderboard._format_honest_limits(limits)
+
+
+def test_severity_weighted_loss_key_accepted(tmp_path):
+    path = _write(
+        tmp_path / "board.json",
+        {"models": [{"model_id": "m", "severity_weighted_loss": 0.7}]},
+    )
+    row = leaderboard.load_leaderboard(path)[0]
+    assert row.severity_weighted_loss == 0.7
+
+
+def test_legacy_loss_alias_still_accepted(tmp_path):
+    path = _write(tmp_path / "board.json", {"models": [{"model_id": "m", "loss": 0.3}]})
+    assert leaderboard.load_leaderboard(path)[0].severity_weighted_loss == 0.3

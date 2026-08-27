@@ -202,6 +202,7 @@ def main() -> None:
     model_rows = []
     losses: dict[str, float] = {}
     ece_results: dict[str, dict] = {}
+    budget_abort_msg: str | None = None
     severities_for_sensitivity = (
         [Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL] * 50
     )
@@ -220,6 +221,10 @@ def main() -> None:
             )
         except BudgetExceeded as exc:
             print(f"  ABORT before finishing {model_id}: {exc}")
+            budget_abort_msg = (
+                f"Run aborted by BudgetExceeded before {model_id} "
+                f"({len(model_rows)} of {len(model_ids)} models completed): {exc}"
+            )
             break
         for trial in results:
             for event in trial.events:
@@ -274,18 +279,29 @@ def main() -> None:
     )
 
     certificate = _certificate(args)
-    (args.out / "leaderboard.json").write_text(
-        json.dumps(
-            {
-                "generated_at": report["metadata"]["generated_at"],
-                "suite": "finance-v1",
-                "cost_model": args.cost_model,
-                "runner": "stub" if use_stub else "openai_compat",
-                "models": model_rows,
-            },
-            indent=2,
-        )
-    )
+    # partial is true for a stub run (always) OR a real run that a BudgetExceeded
+    # abort cut short (model_rows has fewer entries than model_ids) -- either
+    # way this is not a complete, final result and must not render as one.
+    is_partial = use_stub or budget_abort_msg is not None
+    leaderboard_doc: dict = {
+        "generated_at": report["metadata"]["generated_at"],
+        "suite": "finance-v1",
+        "cost_model": args.cost_model,
+        "runner": "stub" if use_stub else "openai_compat",
+        "partial": is_partial,
+        "models": model_rows,
+    }
+    if use_stub:
+        # The stub is gold-keyed, so every model scores perfectly — this file
+        # is a pipeline smoke artifact, never a result. The leaderboard Space
+        # renders this banner as a loud warning (see issue #2); the publish
+        # gate stays closed until a real run replaces it (issue #23).
+        leaderboard_doc["banner"] = "STUB PIPELINE SMOKE OUTPUT"
+        leaderboard_doc["partial_note"] = "Stub pipeline smoke output, not a real run."
+    elif budget_abort_msg is not None:
+        leaderboard_doc["banner"] = "PARTIAL RUN — BUDGET-ABORTED"
+        leaderboard_doc["partial_note"] = budget_abort_msg
+    (args.out / "leaderboard.json").write_text(json.dumps(leaderboard_doc, indent=2))
     (args.out / "report.md").write_text(markdown)
     (args.out / "contamination_certificate.json").write_text(
         json.dumps(certificate, indent=2)
