@@ -1,8 +1,11 @@
 """HF Community Evals packaging for LossBench (P1.18).
 
-Builds the artifacts that register LossBench as a Hugging Face dataset with
-Community Evals: the eval.yaml registration manifest, the dataset card, and
-the canonical JSONL task export for training splits.
+Builds the artifacts for publishing LossBench as a Hugging Face dataset: the
+dataset card and the canonical JSONL task export for the splits.
+
+`build_eval_yaml` / `validate_eval_yaml` are kept for the future benchmark
+registration, but the publisher no longer emits eval.yaml -- that manifest is
+held until blocker B-3 clears (see hf-publication-specs.md 4.2).
 """
 
 from __future__ import annotations
@@ -58,11 +61,15 @@ def build_dataset_card(
     contact: str,
     results_table: str = "No model results published for this revision yet.",
     honest_limits: str = "- synthetic tasks; severity costs are contested inputs",
+    coverage_note: str = (
+        "Coverage of the published leaderboard is disclosed alongside the "
+        "results for each revision."
+    ),
 ) -> str:
     """Render the dataset card markdown from the bundled template.
 
     Sections: Overview, Tasks, License, Severity taxonomy, Cost models,
-    Contamination policy, Reproducibility, Contact.
+    Coverage, Contamination policy, Reproducibility, Contact.
     """
     template = string.Template(_TEMPLATE_PATH.read_text(encoding="utf-8"))
     return template.substitute(
@@ -77,6 +84,7 @@ def build_dataset_card(
         reproducibility_notes=reproducibility_notes,
         contact=contact,
         results_table=results_table,
+        coverage_note=coverage_note,
         honest_limits=honest_limits,
     )
 
