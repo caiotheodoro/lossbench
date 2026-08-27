@@ -74,19 +74,31 @@ def _results_table(leaderboard: Path) -> tuple[str, str]:
     # Only render columns every row actually carries. A run that was stopped
     # before the summary was written has no ECE or parse rate, and printing
     # "nan" would read as a measured value.
+    # False-success is only a real measurement for CLAIM_THEN_VERIFY sources
+    # (dsh/langgraph adapters). Harness-scored rows carry a null rate and must
+    # not render a bare 0.0 that reads as a clean bill of health (issue #10).
+    fs_applicable = all(
+        isinstance(r.get("false_success_rate"), (int, float))
+        and not isinstance(r.get("false_success_rate"), bool)
+        for r in rows
+    )
     optional = [("ece", "ECE"), ("parse_rate", "Parse"), ("error_rate", "Errors")]
     extra = [(key, label) for key, label in optional if all(key in r for r in rows)]
+    fs_col = " | False-success" if fs_applicable else ""
+    fs_sep = "|---:" if fs_applicable else ""
     header = (
-        "| Model | Expected loss | pass@1 | pass^k | False-success"
+        "| Model | Expected loss | pass@1 | pass^k"
+        + fs_col
         + "".join(f" | {label}" for _, label in extra)
-        + " |\n|---|---:|---:|---:|---:"
+        + " |\n|---|---:|---:|---:"
+        + fs_sep
         + "".join("|---:" for _ in extra)
         + "|\n"
     )
     body = "".join(
         f"| `{r['model_id']}` | {r['severity_weighted_loss']:.4f} "
-        f"| {r['pass_at_1']:.3f} | {r['pass_k']:.3f} "
-        f"| {r['false_success_rate']:.3f}"
+        f"| {r['pass_at_1']:.3f} | {r['pass_k']:.3f}"
+        + (f" | {r['false_success_rate']:.3f}" if fs_applicable else "")
         + "".join(f" | {r[key]:.3f}" for key, _ in extra)
         + " |\n"
         for r in rows
@@ -110,6 +122,15 @@ def _results_table(leaderboard: Path) -> tuple[str, str]:
         "- Token cost is deliberately omitted: the repo prices runs from a "
         "placeholder rate table, not from what the gateway actually billed.\n"
     )
+    if not fs_applicable:
+        note += (
+            "- **False-success** is not reported: these runs use the "
+            "self-verifying eval harness, where every decision is checked "
+            "against gold by construction, so the "
+            "\"claimed done, nothing verified it\" rate is a structural 0.0 "
+            "rather than a measurement (issue #10). It is a real metric for "
+            "the dsh / langgraph adapters.\n"
+        )
     shown = {key for key, _ in extra}
     if "ece" in shown:
         note += (

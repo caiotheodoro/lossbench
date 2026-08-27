@@ -16,7 +16,6 @@ from typing import Any
 from lossbench.cache.store import ResponseCache
 from lossbench.runners.base import ModelRunner, RunnerResult
 from lossbench.schema import DecisionEvent, DecisionKind, Task
-from lossbench.scoring.false_success import false_success_rate
 from lossbench.scoring.passk import outcome_verified_pass_at_k, pass_k_reliability
 
 _EPOCH = datetime(2026, 1, 1, tzinfo=UTC)
@@ -67,11 +66,19 @@ def summarize_suite(results: Sequence[TrialResult]) -> dict[str, Any]:
     """Aggregate trial outcomes into the documented summary dictionary.
 
     Returns {"tasks", "trials", "pass_at_1", "pass_at_k", "pass_k",
-    "total_cost", "mean_duration_ms", "false_success_rate", "parse_rate",
-    "error_rate"}: trials is the
+    "total_cost", "mean_duration_ms", "false_success_rate",
+    "false_success_applicable", "parse_rate", "error_rate"}: trials is the
     per-task trial count, pass_at_1/pass_at_k/pass_k are computed over k =
-    trials per task, and false_success_rate is the share of trajectories
-    whose final event claims a decision without an observed outcome.
+    trials per task.
+
+    ``false_success_rate`` is always ``None`` and ``false_success_applicable``
+    always ``False`` here: EvalHarness is a SELF_VERIFYING trajectory source
+    (every event carries a gold-verified observed_outcome), so the
+    false-success detector — "did the agent claim done with nothing
+    verifying it?" — has no trajectory it can fire on and its rate is a
+    structural constant, not a measurement. See
+    ``lossbench.scoring.false_success`` for the CLAIM_THEN_VERIFY adapters
+    where the metric is real.
     """
     per_task: dict[str, list[bool]] = defaultdict(list)
     for result in results:
@@ -86,7 +93,8 @@ def summarize_suite(results: Sequence[TrialResult]) -> dict[str, Any]:
             "pass_k": 0.0,
             "total_cost": 0.0,
             "mean_duration_ms": 0.0,
-            "false_success_rate": 0.0,
+            "false_success_rate": None,
+            "false_success_applicable": False,
             "parse_rate": 0.0,
             "error_rate": 0.0,
         }
@@ -94,11 +102,6 @@ def summarize_suite(results: Sequence[TrialResult]) -> dict[str, Any]:
     matrix = [per_task[task_id] for task_id in sorted(per_task)]
     total_cost = sum(result.cost for result in results)
     mean_duration_ms = sum(result.duration_ms for result in results) / len(results)
-    rate = false_success_rate(
-        [result.events for result in results],
-        [{} for _ in results],
-        _outcome_present,
-    )
     return {
         "tasks": tasks,
         "trials": trials,
@@ -107,7 +110,8 @@ def summarize_suite(results: Sequence[TrialResult]) -> dict[str, Any]:
         "pass_k": pass_k_reliability(matrix, trials),
         "total_cost": total_cost,
         "mean_duration_ms": mean_duration_ms,
-        "false_success_rate": rate,
+        "false_success_rate": None,
+        "false_success_applicable": False,
         "parse_rate": sum(r.parse_ok for r in results) / len(results),
         "error_rate": sum(r.errored for r in results) / len(results),
     }
@@ -288,12 +292,6 @@ def _confidence(outcome: dict[str, Any], matched: bool) -> float:
     if value != value or not 0.0 <= value <= 1.0:  # NaN or out of range
         return 0.9 if matched else 0.1
     return value
-
-
-def _outcome_present(events: Sequence[DecisionEvent], gold: dict[str, Any]) -> bool:
-    if not events:
-        return False
-    return events[-1].observed_outcome is not None
 
 
 def parse_outcome(text: str) -> dict[str, Any] | None:

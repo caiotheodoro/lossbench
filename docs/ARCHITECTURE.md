@@ -97,7 +97,7 @@ sequenceDiagram
     H->>C: cache_key(model, prompt_hash, seed)
     C-->>H: hit ? reuse : runner.decide(...)
     H->>S: TrialResult list
-    S->>S: pass@k, pass^k, TPS, false_success_rate
+    S->>S: pass@k, pass^k, TPS (false_success_rate n/a: self-verifying harness)
     S->>R: losses + sensitivities + calibration
     R->>R: markdown / HTML, honest limits
 ```
@@ -158,7 +158,7 @@ threshold, replay the recorded workload, read the counterfactual cost.
 | `lossbench.record` | `recorder.py`, `proxy.py` | OTel span recorder, event_from_trace, OpenAI-compatible proxy |
 | `lossbench.cli` | `main.py`, `commands.py` | `lossbench` CLI: metrics, costs, decide, simulate, version |
 | `lossbench.ledger` | `store.py` | Append-only audit ledger with SHA-256 hash chain, tamper verification |
-| `lossbench.scoring` | `tps.py`, `passk.py`, `false_success.py` | Trajectory Proper Score; outcome-verified pass@k/pass^k; false-success rate |
+| `lossbench.scoring` | `tps.py`, `passk.py`, `false_success.py` | Trajectory Proper Score; outcome-verified pass@k/pass^k; false-success rate (claim-then-verify adapters only — n/a for the self-verifying harness) |
 | `lossbench.eval` | `harness.py` | Agent-mode evaluation harness with caching and domain verifier dispatch |
 | `lossbench.replay` | `simulator.py` | Counterfactual policy replay (deterministic, no LLM calls) |
 | `lossbench.hitl` | `review.py` | Review requests/resolutions backed by the ledger |
