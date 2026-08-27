@@ -274,18 +274,21 @@ def main() -> None:
     )
 
     certificate = _certificate(args)
-    (args.out / "leaderboard.json").write_text(
-        json.dumps(
-            {
-                "generated_at": report["metadata"]["generated_at"],
-                "suite": "finance-v1",
-                "cost_model": args.cost_model,
-                "runner": "stub" if use_stub else "openai_compat",
-                "models": model_rows,
-            },
-            indent=2,
-        )
-    )
+    leaderboard_doc: dict = {
+        "generated_at": report["metadata"]["generated_at"],
+        "suite": "finance-v1",
+        "cost_model": args.cost_model,
+        "runner": "stub" if use_stub else "openai_compat",
+        "partial": use_stub,
+        "models": model_rows,
+    }
+    if use_stub:
+        # The stub is gold-keyed, so every model scores perfectly — this file
+        # is a pipeline smoke artifact, never a result. The leaderboard Space
+        # renders this banner as a loud warning (see issue #2); the publish
+        # gate stays closed until a real run replaces it (issue #23).
+        leaderboard_doc["banner"] = "STUB PIPELINE SMOKE OUTPUT"
+    (args.out / "leaderboard.json").write_text(json.dumps(leaderboard_doc, indent=2))
     (args.out / "report.md").write_text(markdown)
     (args.out / "contamination_certificate.json").write_text(
         json.dumps(certificate, indent=2)

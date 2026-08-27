@@ -12,26 +12,40 @@ report.
 |---|---|
 | `leaderboard.py` | Pure logic: `LeaderboardRow`, `load_leaderboard`, `render_table`, `crossover_summary` |
 | `app.py` | Thin Gradio UI: `demo()` builds the Blocks; the `__main__` block launches it |
-| `sample_leaderboard.json` | Default fixture (3 models, one with None optional fields) used as the Space default |
+| `sample_leaderboard.json` | **Synthetic demo fixture** — invented `demo-model-a/b/c` numbers, carries a `banner: "SYNTHETIC DEMO DATA"` the UI renders as a loud warning. Never a real result, never a silent fallback. |
+
+## Publish gate
+
+This Space stays **unpublished** until the real full run (issue #23) produces a
+non-partial leaderboard dataset. The committed `artifacts/leaderboard.json` is
+stub pipeline smoke output (`"partial": true`, `"banner": "STUB PIPELINE SMOKE
+OUTPUT"`) — every model scores perfectly because the stub is gold-keyed, so it
+is not a result. This fix (issue #2) closes the fabrication hole — the loader
+reads the real `severity_weighted_loss` key and any non-result data renders a
+visible banner — but it does not lift the publish gate.
 
 ## Leaderboard JSON format
 
 ```json
 {
   "models": [
-    {"model_id": "reconforge-1.7b", "loss": 0.42, "pass_k": 0.87,
+    {"model_id": "demo-model-a", "severity_weighted_loss": 0.42, "pass_k": 0.87,
      "ece": 0.031, "escalated": 14, "total_cost": 92.5},
-    {"model_id": "baseline-gpt-4o", "loss": 1.6, "escalated": 21, "total_cost": 210.0}
+    {"model_id": "demo-model-b", "severity_weighted_loss": 1.6, "escalated": 21, "total_cost": 210.0}
   ],
   "sensitivities": {
-    "reconforge-1.7b": [{"ratio": 1.0, "loss": 0.42}, {"ratio": 10.0, "loss": 4.02}]
+    "demo-model-a": [{"ratio": 1.0, "loss": 0.42}, {"ratio": 10.0, "loss": 4.02}]
   },
-  "honest_limits": ["Rankings depend on the severity-cost regime."]
+  "honest_limits": ["Rankings depend on the severity-cost regime."],
+  "banner": "SYNTHETIC DEMO DATA"
 }
 ```
 
-- `models` is required; `loss` and `model_id` are required per entry, the rest
-  are optional (absent -> `-` in the table).
+- `models` is required; `model_id` and `severity_weighted_loss` (the key the run
+  artifacts and `scripts/full_run.py` emit; the legacy `loss` alias is still
+  read) are required per entry, the rest are optional (absent -> `-` in the table).
+- `banner` is optional; when present the UI renders it as a loud warning that
+  the data is not a real result.
 - `sensitivities` and `honest_limits` are optional and come straight from the
   frontier report; see `src/lossbench/report/frontier.py`
   (`frontier_report(...)` returns `{"losses", "sensitivities", "calibration",

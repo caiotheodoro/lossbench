@@ -1,0 +1,62 @@
+{
+  "generated_at": "2026-08-27T02:09:00.559214+00:00",
+  "suite": "finance-v1",
+  "cost_model": "reconciliation",
+  "runner": "stub",
+  "partial": true,
+  "models": [
+    {
+      "model_id": "reconforge-1.7b",
+      "pass_at_1": 1.0,
+      "pass_at_k": 1.0,
+      "pass_k": 1.0,
+      "false_success_rate": 0.0,
+      "parse_rate": 1.0,
+      "error_rate": 0.0,
+      "severity_weighted_loss": 0,
+      "ece": 0.1,
+      "total_cost": 0.0,
+      "mean_duration_ms": 0.02183059890133639
+    },
+    {
+      "model_id": "qwen3.8-27b",
+      "pass_at_1": 1.0,
+      "pass_at_k": 1.0,
+      "pass_k": 1.0,
+      "false_success_rate": 0.0,
+      "parse_rate": 1.0,
+      "error_rate": 0.0,
+      "severity_weighted_loss": 0,
+      "ece": 0.1,
+      "total_cost": 0.0,
+      "mean_duration_ms": 0.022365325518573325
+    },
+    {
+      "model_id": "nemotron-3.5-lightning",
+      "pass_at_1": 1.0,
+      "pass_at_k": 1.0,
+      "pass_k": 1.0,
+      "false_success_rate": 0.0,
+      "parse_rate": 1.0,
+      "error_rate": 0.0,
+      "severity_weighted_loss": 0,
+      "ece": 0.1,
+      "total_cost": 0.0,
+      "mean_duration_ms": 0.018744401556129258
+    },
+    {
+      "model_id": "deepseek-v4-flash",
+      "pass_at_1": 1.0,
+      "pass_at_k": 1.0,
+      "pass_k": 1.0,
+      "false_success_rate": 0.0,
+      "parse_rate": 1.0,
+      "error_rate": 0.0,
+      "severity_weighted_loss": 0,
+      "ece": 0.1,
+      "total_cost": 0.0,
+      "mean_duration_ms": 0.018411135533824563
+    }
+  ],
+  "banner": "STUB PIPELINE SMOKE OUTPUT"
+}

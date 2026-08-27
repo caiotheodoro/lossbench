@@ -44,9 +44,12 @@ def _fmt(value: float | None) -> str:
 def load_leaderboard(path: str | Path) -> list[LeaderboardRow]:
     """Parse a leaderboard JSON: {"models": [...]} sorted by loss ascending.
 
-    Each model entry carries model_id and loss (both required) plus the
-    optional pass_k, ece, escalated, and total_cost fields; absent optional
-    fields become None. Raises ValueError on a missing model_id or loss.
+    Each model entry carries model_id and the severity-weighted loss (both
+    required) plus the optional pass_k, ece, escalated, and total_cost fields;
+    absent optional fields become None. The loss key is ``severity_weighted_loss``
+    — the one name the run artifacts and ``scripts/full_run.py`` emit — with the
+    legacy ``loss`` alias still accepted. Raises ValueError on a missing
+    model_id or loss.
     """
     with Path(path).open(encoding="utf-8") as fh:
         doc = json.load(fh)
@@ -57,15 +60,19 @@ def load_leaderboard(path: str | Path) -> list[LeaderboardRow]:
         if not isinstance(entry, dict):
             raise ValueError("every leaderboard entry must be an object")
         model_id = entry.get("model_id")
-        loss = entry.get("loss")
+        loss = entry.get("severity_weighted_loss")
+        if loss is None:
+            loss = entry.get("loss")
         if model_id is None:
             raise ValueError("missing model_id")
         if loss is None:
-            raise ValueError(f"missing loss for model '{model_id}'")
+            raise ValueError(
+                f"missing severity_weighted_loss for model '{model_id}'"
+            )
         rows.append(
             LeaderboardRow(
                 model_id=str(model_id),
-                severity_weighted_loss=_opt_number(loss, "loss"),
+                severity_weighted_loss=_opt_number(loss, "severity_weighted_loss"),
                 pass_k=_opt_number(entry.get("pass_k"), "pass_k"),
                 ece=_opt_number(entry.get("ece"), "ece"),
                 escalated=_opt_number(entry.get("escalated"), "escalated"),
@@ -131,6 +138,19 @@ def crossover_summary(sensitivities: dict[str, list[dict[str, float]]] | None) -
                     lines.append(f"rankings flip at ratio {ratio:g} between {a} and {b}")
                     break
     return "\n".join(lines) if lines else "no crossovers"
+
+
+def load_banner(path: str | Path) -> str | None:
+    """Return the leaderboard JSON's ``banner`` string, or None if absent.
+
+    A banner marks data that is not a real benchmark result — a synthetic demo
+    fixture or stub pipeline smoke output. The UI renders it as a loud, visible
+    warning; it is never a silent fallback.
+    """
+    with Path(path).open(encoding="utf-8") as fh:
+        doc = json.load(fh)
+    banner = doc.get("banner")
+    return str(banner) if banner else None
 
 
 def _load_extras(path: str | Path) -> tuple[dict[str, list[dict[str, float]]] | None, list[str]]:
