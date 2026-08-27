@@ -129,7 +129,7 @@ def _write_model_card(path: Path, model_id: str, summary: dict, loss: float) -> 
 |---|---|
 | pass@1 | {summary['pass_at_1']:.3f} |
 | pass^k | {summary['pass_k']:.3f} |
-| false-success rate | {summary['false_success_rate']:.3f} |
+| false-success rate | n/a — self-verifying harness (see issue #10) |
 | severity-weighted loss | {loss:.4f} |
 | total cost | {summary['total_cost']:.4f} |
 
@@ -246,6 +246,7 @@ def main() -> None:
                 "pass_at_k": summary["pass_at_k"],
                 "pass_k": summary["pass_k"],
                 "false_success_rate": summary["false_success_rate"],
+                "false_success_applicable": summary["false_success_applicable"],
                 "parse_rate": summary["parse_rate"],
                 "error_rate": summary["error_rate"],
                 "severity_weighted_loss": round(loss, 4),

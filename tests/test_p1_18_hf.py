@@ -10,6 +10,7 @@ from lossbench.schema import Severity, Task
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _EXPORTER_PATH = _REPO_ROOT / "packaging" / "hf" / "exporter.py"
 _EVAL_YAML_PATH = _REPO_ROOT / "packaging" / "hf" / "eval.yaml"
+_PUBLISH_PATH = _REPO_ROOT / "packaging" / "hf" / "publish.py"
 
 _CARD_SECTIONS = [
     "Overview",
@@ -32,6 +33,17 @@ def _load_exporter():
 
 
 exporter = _load_exporter()
+
+
+def _load_publish():
+    spec = importlib.util.spec_from_file_location("lossbench_hf_publish", _PUBLISH_PATH)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+publish = _load_publish()
 
 
 def _task(i: int) -> Task:
@@ -195,3 +207,66 @@ def test_tasks_to_jsonl_excludes_the_signature(tmp_path):
     exporter.tasks_to_jsonl([_task(0)], str(out))
     record = _json.loads(out.read_text(encoding="utf-8").splitlines()[0])
     assert "signature" not in record
+
+
+def _leaderboard(tmp_path, models):
+    import json as _json
+
+    path = tmp_path / "leaderboard.json"
+    path.write_text(
+        _json.dumps(
+            {
+                "runner": "openai_compat",
+                "cost_model": "reconciliation",
+                "generated_at": "2026-08-27T00:00:00+00:00",
+                "models": models,
+            }
+        )
+    )
+    return path
+
+
+def test_results_table_reads_false_success_applicable_flag(tmp_path):
+    """_results_table must trust the flag full_run.py threaded into each row,
+    not re-derive it by sniffing false_success_rate's type (issue #10 review)."""
+    markdown, _ = publish._results_table(
+        _leaderboard(
+            tmp_path,
+            [
+                {
+                    "model_id": "m",
+                    "severity_weighted_loss": 0.1,
+                    "pass_at_1": 0.9,
+                    "pass_k": 0.9,
+                    "false_success_rate": 0.25,
+                    "false_success_applicable": True,
+                }
+            ],
+        )
+    )
+    assert "| False-success" in markdown
+    assert "0.250" in markdown
+
+
+def test_results_table_omits_false_success_when_not_applicable_even_if_rate_is_numeric(tmp_path):
+    """A row could carry a stale numeric false_success_rate alongside
+    false_success_applicable=False (e.g. a self-verifying harness row that
+    hasn't been fully migrated to null yet) -- the flag must win, not the type
+    of the rate field, or a harness-scored 0.0 renders as a real measurement."""
+    markdown, _ = publish._results_table(
+        _leaderboard(
+            tmp_path,
+            [
+                {
+                    "model_id": "m",
+                    "severity_weighted_loss": 0.1,
+                    "pass_at_1": 0.9,
+                    "pass_k": 0.9,
+                    "false_success_rate": 0.0,
+                    "false_success_applicable": False,
+                }
+            ],
+        )
+    )
+    assert "| False-success" not in markdown
+    assert "| 0.000" not in markdown

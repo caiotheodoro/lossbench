@@ -108,6 +108,7 @@ def test_summarize_suite_keys():
         "total_cost",
         "mean_duration_ms",
         "false_success_rate",
+        "false_success_applicable",
         "parse_rate",
         "error_rate",
     }
@@ -118,7 +119,10 @@ def test_summarize_suite_keys():
     assert summary["pass_k"] == 1.0
     assert summary["total_cost"] == 0.0
     assert summary["mean_duration_ms"] > 0.0
-    assert 0.0 <= summary["false_success_rate"] <= 1.0
+    # EvalHarness is a SELF_VERIFYING source: the metric is not applicable and
+    # must not be reported as a bare 0.0 (issue #10).
+    assert summary["false_success_rate"] is None
+    assert summary["false_success_applicable"] is False
 
 
 class CountingStub:
