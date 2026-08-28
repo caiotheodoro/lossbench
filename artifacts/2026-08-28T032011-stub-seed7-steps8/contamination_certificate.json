@@ -1,4 +1,5 @@
 {
+  "runner": "stub",
   "train_seed": 101,
   "eval_seed": 777,
   "train_tasks": 180,

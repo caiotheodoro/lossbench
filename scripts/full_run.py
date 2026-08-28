@@ -1,8 +1,8 @@
 """Full benchmark run: generate -> evaluate -> audit -> certificate -> report.
 
 Produces the P3.6 release artifacts under a per-run directory
-``artifacts/<run_id>/`` (run_id = date + runner + seed + max_steps) so runs
-from different invocations never pile up in one directory:
+``artifacts/<run_id>/`` (run_id = UTC timestamp + runner + seed + max_steps)
+so runs from different invocations never pile up in one directory:
 
     artifacts/<run_id>/leaderboard.json                machine-readable results
     artifacts/<run_id>/report.md                       frontier report (losses, sensitivities)
@@ -109,7 +109,7 @@ def _severity_weighted_loss(tasks, results, trials: int, profile_id: str = "reco
     return severity_weighted_loss(errors, severities, profile)
 
 
-def _certificate(args) -> dict:
+def _certificate(args, use_stub: bool) -> dict:
     train = []
     eval_set = []
     for domain in DOMAINS:
@@ -117,6 +117,11 @@ def _certificate(args) -> dict:
         eval_set += generate_suite(domain, seed=EVAL_SEED, n_tasks=60)
     check = monitor_report(train, eval_set)
     return {
+        # Same stub/real distinction the leaderboard and model cards carry --
+        # without this, a stub run's certificate is byte-for-byte the same
+        # shape a real run produces, silently undermining the "every artifact
+        # carries an unmissable stub marker" guarantee.
+        "runner": "stub" if use_stub else "openai_compat",
         "train_seed": TRAIN_SEED,
         "eval_seed": EVAL_SEED,
         "train_tasks": len(train),
@@ -135,10 +140,17 @@ _STUB_CARD_BANNER = (
 )
 
 def _git_revision() -> str:
-    """Short SHA of the current repo state, or 'unknown' outside a checkout."""
+    """Short SHA of this repo's state, or 'unknown' outside a checkout.
+
+    Pinned to this file's own repo via -C -- otherwise a caller with a
+    different cwd (a wrapper script, a nested checkout, a monorepo tool)
+    would silently record some *other* repository's SHA, breaking the
+    "regenerable from a tagged repo state" guarantee this field exists for.
+    """
+    repo_root = Path(__file__).resolve().parent.parent
     try:
         return subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
+            ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
             text=True,
             stderr=subprocess.DEVNULL,
         ).strip()
@@ -222,10 +234,20 @@ def main() -> None:
     )
     use_stub = "LOSSBENCH_API_KEY" not in os.environ
     runner_slug = "stub" if use_stub else "openai_compat"
-    run_date = datetime.now(UTC).strftime("%Y-%m-%d")
-    run_id = f"{run_date}-{runner_slug}-seed{args.seed}-steps{args.max_steps}"
+    # Seconds-precision timestamp, not just a date: two invocations with the
+    # same seed/max_steps on the same day must not collide on run_dir and
+    # silently share (and re-append to) one workload.duckdb.
+    run_stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H%M%S")
+    run_id = f"{run_stamp}-{runner_slug}-seed{args.seed}-steps{args.max_steps}"
     run_dir = args.out / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        run_dir.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        raise SystemExit(
+            f"run_dir {run_dir} already exists -- refusing to reuse/append to "
+            "an existing run's artifacts and ledger. Re-run (the timestamp "
+            "will differ) or remove the stale directory first."
+        ) from None
     (run_dir / "model_cards").mkdir(exist_ok=True)
 
     runconfig = {
@@ -329,7 +351,7 @@ def main() -> None:
         cost_model=args.cost_model,
     )
 
-    certificate = _certificate(args)
+    certificate = _certificate(args, use_stub)
     # partial is true for a stub run (always) OR a real run that a BudgetExceeded
     # abort cut short (model_rows has fewer entries than model_ids) -- either
     # way this is not a complete, final result and must not render as one.

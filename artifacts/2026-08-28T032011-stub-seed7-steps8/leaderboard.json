@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-28T00:41:36.880817+00:00",
+  "generated_at": "2026-08-28T03:20:20.970867+00:00",
   "suite": "finance-v1",
   "cost_model": "reconciliation",
   "runner": "stub",
@@ -17,7 +17,7 @@
       "severity_weighted_loss": 0,
       "ece": 0.1,
       "total_cost": 0.0,
-      "mean_duration_ms": 0.014965556911192834
+      "mean_duration_ms": 0.01588355892130898
     },
     {
       "model_id": "qwen3.8-27b",
@@ -31,7 +31,7 @@
       "severity_weighted_loss": 0,
       "ece": 0.1,
       "total_cost": 0.0,
-      "mean_duration_ms": 0.01899831895975189
+      "mean_duration_ms": 0.014908899190939136
     },
     {
       "model_id": "nemotron-3.5-lightning",
@@ -45,7 +45,7 @@
       "severity_weighted_loss": 0,
       "ece": 0.1,
       "total_cost": 0.0,
-      "mean_duration_ms": 0.03845690465014842
+      "mean_duration_ms": 0.015036108994132115
     },
     {
       "model_id": "deepseek-v4-flash",
@@ -59,7 +59,7 @@
       "severity_weighted_loss": 0,
       "ece": 0.1,
       "total_cost": 0.0,
-      "mean_duration_ms": 0.015779502379397552
+      "mean_duration_ms": 0.014222644838607974
     }
   ],
   "banner": "STUB PIPELINE SMOKE OUTPUT",

@@ -4,7 +4,7 @@
 
 - cost_model: reconciliation
 
-- generated_at: 2026-08-28T00:41:36.880817+00:00
+- generated_at: 2026-08-28T03:20:20.970867+00:00
 
 - suite: finance-v1
 

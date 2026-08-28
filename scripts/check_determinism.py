@@ -11,8 +11,19 @@ from pathlib import Path
 
 
 def _run_dir(root: Path) -> Path:
-    """full_run writes into a single per-run subdirectory; resolve it."""
-    return next(p for p in sorted(root.iterdir()) if p.is_dir())
+    """full_run writes into a single per-run subdirectory; resolve it.
+
+    Asserts exactly one run subdirectory exists rather than silently taking
+    the alphabetically-first one -- a stale leftover dir from an earlier
+    manual run would otherwise make this gate compare data that was never
+    produced by the current two invocations.
+    """
+    dirs = [p for p in sorted(root.iterdir()) if p.is_dir()]
+    if len(dirs) != 1:
+        raise RuntimeError(
+            f"expected exactly one run directory under {root}, found {len(dirs)}: {dirs}"
+        )
+    return dirs[0]
 
 A = _run_dir(Path("/tmp/lb-golden-a"))
 B = _run_dir(Path("/tmp/lb-golden-b"))

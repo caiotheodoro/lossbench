@@ -139,6 +139,7 @@ def test_full_run_produces_artifacts(tmp_path):
 
     cert = json.loads((run_dir / "contamination_certificate.json").read_text())
     assert cert["valid"] is True
+    assert cert["runner"] == "stub"
 
     runconfig = json.loads((run_dir / "runconfig.json").read_text())
     assert runconfig["runner"] == "stub"
