@@ -1,0 +1,10 @@
+{
+  "runner": "stub",
+  "train_seed": 101,
+  "eval_seed": 777,
+  "train_tasks": 180,
+  "eval_tasks": 180,
+  "signature_overlap": 0.0,
+  "false_fire": 1.0,
+  "valid": true
+}

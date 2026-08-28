@@ -1,11 +1,15 @@
 """Full benchmark run: generate -> evaluate -> audit -> certificate -> report.
 
-Produces the P3.6 release artifacts:
+Produces the P3.6 release artifacts under a per-run directory
+``artifacts/<run_id>/`` (run_id = UTC timestamp + runner + seed + max_steps)
+so runs from different invocations never pile up in one directory:
 
-    artifacts/leaderboard.json                machine-readable results
-    artifacts/report.md                       frontier report (losses, sensitivities)
-    artifacts/contamination_certificate.json  train/eval split certificate
-    artifacts/model_cards/*.md                per-model cards
+    artifacts/<run_id>/leaderboard.json                machine-readable results
+    artifacts/<run_id>/report.md                       frontier report (losses, sensitivities)
+    artifacts/<run_id>/contamination_certificate.json  train/eval split certificate
+    artifacts/<run_id>/model_cards/*.md                per-model cards
+    artifacts/<run_id>/runconfig.json                  seed / runner / models / git revision
+    artifacts/<run_id>/workload.duckdb                 audit ledger (fresh file per run)
 
 The default runner is the deterministic stub (gold-keyed by task_id), so the
 full pipeline runs anywhere with zero API keys. When LOSSBENCH_API_KEY is set
@@ -21,6 +25,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 from lossbench.contamination.monitor import monitor_report
@@ -103,7 +109,7 @@ def _severity_weighted_loss(tasks, results, trials: int, profile_id: str = "reco
     return severity_weighted_loss(errors, severities, profile)
 
 
-def _certificate(args) -> dict:
+def _certificate(args, use_stub: bool) -> dict:
     train = []
     eval_set = []
     for domain in DOMAINS:
@@ -111,6 +117,11 @@ def _certificate(args) -> dict:
         eval_set += generate_suite(domain, seed=EVAL_SEED, n_tasks=60)
     check = monitor_report(train, eval_set)
     return {
+        # Same stub/real distinction the leaderboard and model cards carry --
+        # without this, a stub run's certificate is byte-for-byte the same
+        # shape a real run produces, silently undermining the "every artifact
+        # carries an unmissable stub marker" guarantee.
+        "runner": "stub" if use_stub else "openai_compat",
         "train_seed": TRAIN_SEED,
         "eval_seed": EVAL_SEED,
         "train_tasks": len(train),
@@ -121,9 +132,38 @@ def _certificate(args) -> dict:
     }
 
 
-def _write_model_card(path: Path, model_id: str, summary: dict, loss: float) -> None:
+_STUB_CARD_BANNER = (
+    "## ⚠️ STUB PIPELINE SMOKE OUTPUT\n\n"
+    "This card is **not** a LossBench result. The runner is gold-keyed by task "
+    "id, so every model scores perfectly by construction. Set LOSSBENCH_API_KEY "
+    "for real inference.\n\n"
+)
+
+def _git_revision() -> str:
+    """Short SHA of this repo's state, or 'unknown' outside a checkout.
+
+    Pinned to this file's own repo via -C -- otherwise a caller with a
+    different cwd (a wrapper script, a nested checkout, a monorepo tool)
+    would silently record some *other* repository's SHA, breaking the
+    "regenerable from a tagged repo state" guarantee this field exists for.
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+    try:
+        return subprocess.check_output(
+            ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        return "unknown"
+
+def _write_model_card(
+    path: Path, model_id: str, summary: dict, loss: float, use_stub: bool
+) -> None:
+    banner = _STUB_CARD_BANNER if use_stub else ""
     path.write_text(
-        f"""# {model_id} — LossBench finance-v1
+        banner
+        + f"""# {model_id} — LossBench finance-v1
 
 | Metric | Value |
 |---|---|
@@ -192,12 +232,40 @@ def main() -> None:
         if args.models
         else list(MODEL_IDS)
     )
-    args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "model_cards").mkdir(exist_ok=True)
-
     use_stub = "LOSSBENCH_API_KEY" not in os.environ
+    runner_slug = "stub" if use_stub else "openai_compat"
+    # Seconds-precision timestamp, not just a date: two invocations with the
+    # same seed/max_steps on the same day must not collide on run_dir and
+    # silently share (and re-append to) one workload.duckdb.
+    run_stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H%M%S")
+    run_id = f"{run_stamp}-{runner_slug}-seed{args.seed}-steps{args.max_steps}"
+    run_dir = args.out / run_id
+    try:
+        run_dir.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        raise SystemExit(
+            f"run_dir {run_dir} already exists -- refusing to reuse/append to "
+            "an existing run's artifacts and ledger. Re-run (the timestamp "
+            "will differ) or remove the stale directory first."
+        ) from None
+    (run_dir / "model_cards").mkdir(exist_ok=True)
+
+    runconfig = {
+        "run_id": run_id,
+        "seed": args.seed,
+        "runner": runner_slug,
+        "model_ids": model_ids,
+        "trials": args.trials,
+        "max_steps": args.max_steps,
+        "n_tasks": args.n_tasks,
+        "cost_model": args.cost_model,
+        "git_revision": _git_revision(),
+        "note": "Regenerable from tagged repo state results-v0.1.0 + this artifact.",
+    }
+    (run_dir / "runconfig.json").write_text(json.dumps(runconfig, indent=2))
+
     tracker = None if use_stub else BudgetTracker(args.max_cost)
-    ledger = AuditLedger(str(args.out / "workload.duckdb"))
+    ledger = AuditLedger(str(run_dir / "workload.duckdb"))
 
     model_rows = []
     losses: dict[str, float] = {}
@@ -256,7 +324,11 @@ def main() -> None:
             }
         )
         _write_model_card(
-            args.out / "model_cards" / f"{model_id}.md", model_id, summary, loss
+            run_dir / "model_cards" / f"{model_id}.md",
+            model_id,
+            summary,
+            loss,
+            use_stub,
         )
         print(f"  {model_id}: pass@1={summary['pass_at_1']:.3f} "
               f"pass^k={summary['pass_k']:.3f} parse={summary['parse_rate']:.3f} "
@@ -279,7 +351,7 @@ def main() -> None:
         cost_model=args.cost_model,
     )
 
-    certificate = _certificate(args)
+    certificate = _certificate(args, use_stub)
     # partial is true for a stub run (always) OR a real run that a BudgetExceeded
     # abort cut short (model_rows has fewer entries than model_ids) -- either
     # way this is not a complete, final result and must not render as one.
@@ -302,13 +374,14 @@ def main() -> None:
     elif budget_abort_msg is not None:
         leaderboard_doc["banner"] = "PARTIAL RUN — BUDGET-ABORTED"
         leaderboard_doc["partial_note"] = budget_abort_msg
-    (args.out / "leaderboard.json").write_text(json.dumps(leaderboard_doc, indent=2))
-    (args.out / "report.md").write_text(markdown)
-    (args.out / "contamination_certificate.json").write_text(
+    (run_dir / "leaderboard.json").write_text(json.dumps(leaderboard_doc, indent=2))
+    (run_dir / "report.md").write_text(markdown)
+    (run_dir / "contamination_certificate.json").write_text(
         json.dumps(certificate, indent=2)
     )
 
-    print(f"artifacts written to {args.out}/")
+    print(f"artifacts written to {run_dir}/")
+    print(f"  run_id                        {run_id}")
     print(f"  leaderboard.json              {len(model_rows)} models")
     print(f"  report.md                     {len(markdown.splitlines())} lines")
     print(f"  contamination certificate:    valid={certificate['valid']}")

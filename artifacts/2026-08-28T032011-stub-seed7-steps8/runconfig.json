@@ -1,0 +1,17 @@
+{
+  "run_id": "2026-08-28T032011-stub-seed7-steps8",
+  "seed": 7,
+  "runner": "stub",
+  "model_ids": [
+    "reconforge-1.7b",
+    "qwen3.8-27b",
+    "nemotron-3.5-lightning",
+    "deepseek-v4-flash"
+  ],
+  "trials": 3,
+  "max_steps": 8,
+  "n_tasks": 300,
+  "cost_model": "reconciliation",
+  "git_revision": "b9f01b5",
+  "note": "Regenerable from tagged repo state results-v0.1.0 + this artifact."
+}

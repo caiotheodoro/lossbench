@@ -88,6 +88,17 @@ outcome = lab.simulate_with_ledger(ledger, policy, new_threshold=0.4)
 print(outcome.total_before, outcome.total_after, len(outcome.per_case_diff))
 ```
 
+## Artifacts
+
+Each `scripts/full_run.py` invocation writes a self-contained evidence tree to
+`artifacts/<run_id>/` (`run_id` = date + runner + seed + max_steps): its own
+`leaderboard.json`, `report.md`, `contamination_certificate.json`,
+`model_cards/`, `runconfig.json` (seed / runner / models / git revision), and
+`workload.duckdb`. Stub runs carry an unmissable banner in every file. Runs
+whose numbers are published are pinned to a local git tag (`results-v0.1.0`);
+nothing goes on a card unless it is regenerable from a tagged state plus a
+committed artifact.
+
 ## Architecture & docs
 
 | Doc | Contents |

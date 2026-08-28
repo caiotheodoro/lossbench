@@ -136,16 +136,38 @@ def test_sample_fixture_is_obviously_synthetic():
 
 
 def test_real_artifact_parses_end_to_end():
-    # The real, committed run artifact must load through the Space loader.
-    artifact = _REPO_ROOT / "artifacts" / "leaderboard.json"
-    assert artifact.exists(), "artifacts/leaderboard.json must be committed"
-    rows = leaderboard.load_leaderboard(artifact)
-    assert rows, "real artifact should yield leaderboard rows"
-    sensitivities, limits = leaderboard._load_extras(artifact)
-    table = leaderboard.render_table(rows)
-    assert table.startswith("| Model |")
-    leaderboard.crossover_summary(sensitivities)
-    leaderboard._format_honest_limits(limits)
+    # Every committed per-run artifact must load through the Space loader.
+    artifacts = sorted((_REPO_ROOT / "artifacts").glob("*/leaderboard.json"))
+    assert artifacts, "a per-run artifacts/<run_id>/leaderboard.json must be committed"
+    for artifact in artifacts:
+        rows = leaderboard.load_leaderboard(artifact)
+        assert rows, f"{artifact} should yield leaderboard rows"
+        sensitivities, limits = leaderboard._load_extras(artifact)
+        table = leaderboard.render_table(rows)
+        assert table.startswith("| Model |")
+        leaderboard.crossover_summary(sensitivities)
+        leaderboard._format_honest_limits(limits)
+
+
+def test_full_run_leaderboard_roundtrips_through_loader(tmp_path):
+    # scripts/full_run.py's emitted leaderboard.json loads as the Space schema.
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-m", "scripts.full_run",
+         "--out", str(tmp_path / "artifacts"), "--seed", "7", "--n-tasks", "90"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert result.returncode == 0, result.stderr
+    emitted = sorted((tmp_path / "artifacts").glob("*/leaderboard.json"))
+    assert len(emitted) == 1, emitted
+    rows = leaderboard.load_leaderboard(emitted[0])
+    assert [row.model_id for row in rows]
+    assert leaderboard.render_table(rows).startswith("| Model |")
 
 
 def test_severity_weighted_loss_key_accepted(tmp_path):
