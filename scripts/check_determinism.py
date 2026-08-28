@@ -9,8 +9,13 @@ import json
 import sys
 from pathlib import Path
 
-A = Path("/tmp/lb-golden-a")
-B = Path("/tmp/lb-golden-b")
+
+def _run_dir(root: Path) -> Path:
+    """full_run writes into a single per-run subdirectory; resolve it."""
+    return next(p for p in sorted(root.iterdir()) if p.is_dir())
+
+A = _run_dir(Path("/tmp/lb-golden-a"))
+B = _run_dir(Path("/tmp/lb-golden-b"))
 
 
 def _normalized(text: str) -> str:

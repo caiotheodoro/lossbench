@@ -1,11 +1,15 @@
 """Full benchmark run: generate -> evaluate -> audit -> certificate -> report.
 
-Produces the P3.6 release artifacts:
+Produces the P3.6 release artifacts under a per-run directory
+``artifacts/<run_id>/`` (run_id = date + runner + seed + max_steps) so runs
+from different invocations never pile up in one directory:
 
-    artifacts/leaderboard.json                machine-readable results
-    artifacts/report.md                       frontier report (losses, sensitivities)
-    artifacts/contamination_certificate.json  train/eval split certificate
-    artifacts/model_cards/*.md                per-model cards
+    artifacts/<run_id>/leaderboard.json                machine-readable results
+    artifacts/<run_id>/report.md                       frontier report (losses, sensitivities)
+    artifacts/<run_id>/contamination_certificate.json  train/eval split certificate
+    artifacts/<run_id>/model_cards/*.md                per-model cards
+    artifacts/<run_id>/runconfig.json                  seed / runner / models / git revision
+    artifacts/<run_id>/workload.duckdb                 audit ledger (fresh file per run)
 
 The default runner is the deterministic stub (gold-keyed by task_id), so the
 full pipeline runs anywhere with zero API keys. When LOSSBENCH_API_KEY is set
@@ -21,6 +25,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 from lossbench.contamination.monitor import monitor_report
@@ -121,9 +127,31 @@ def _certificate(args) -> dict:
     }
 
 
-def _write_model_card(path: Path, model_id: str, summary: dict, loss: float) -> None:
+_STUB_CARD_BANNER = (
+    "## ⚠️ STUB PIPELINE SMOKE OUTPUT\n\n"
+    "This card is **not** a LossBench result. The runner is gold-keyed by task "
+    "id, so every model scores perfectly by construction. Set LOSSBENCH_API_KEY "
+    "for real inference.\n\n"
+)
+
+def _git_revision() -> str:
+    """Short SHA of the current repo state, or 'unknown' outside a checkout."""
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        return "unknown"
+
+def _write_model_card(
+    path: Path, model_id: str, summary: dict, loss: float, use_stub: bool
+) -> None:
+    banner = _STUB_CARD_BANNER if use_stub else ""
     path.write_text(
-        f"""# {model_id} — LossBench finance-v1
+        banner
+        + f"""# {model_id} — LossBench finance-v1
 
 | Metric | Value |
 |---|---|
@@ -192,12 +220,30 @@ def main() -> None:
         if args.models
         else list(MODEL_IDS)
     )
-    args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "model_cards").mkdir(exist_ok=True)
-
     use_stub = "LOSSBENCH_API_KEY" not in os.environ
+    runner_slug = "stub" if use_stub else "openai_compat"
+    run_date = datetime.now(UTC).strftime("%Y-%m-%d")
+    run_id = f"{run_date}-{runner_slug}-seed{args.seed}-steps{args.max_steps}"
+    run_dir = args.out / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "model_cards").mkdir(exist_ok=True)
+
+    runconfig = {
+        "run_id": run_id,
+        "seed": args.seed,
+        "runner": runner_slug,
+        "model_ids": model_ids,
+        "trials": args.trials,
+        "max_steps": args.max_steps,
+        "n_tasks": args.n_tasks,
+        "cost_model": args.cost_model,
+        "git_revision": _git_revision(),
+        "note": "Regenerable from tagged repo state results-v0.1.0 + this artifact.",
+    }
+    (run_dir / "runconfig.json").write_text(json.dumps(runconfig, indent=2))
+
     tracker = None if use_stub else BudgetTracker(args.max_cost)
-    ledger = AuditLedger(str(args.out / "workload.duckdb"))
+    ledger = AuditLedger(str(run_dir / "workload.duckdb"))
 
     model_rows = []
     losses: dict[str, float] = {}
@@ -256,7 +302,11 @@ def main() -> None:
             }
         )
         _write_model_card(
-            args.out / "model_cards" / f"{model_id}.md", model_id, summary, loss
+            run_dir / "model_cards" / f"{model_id}.md",
+            model_id,
+            summary,
+            loss,
+            use_stub,
         )
         print(f"  {model_id}: pass@1={summary['pass_at_1']:.3f} "
               f"pass^k={summary['pass_k']:.3f} parse={summary['parse_rate']:.3f} "
@@ -302,13 +352,14 @@ def main() -> None:
     elif budget_abort_msg is not None:
         leaderboard_doc["banner"] = "PARTIAL RUN — BUDGET-ABORTED"
         leaderboard_doc["partial_note"] = budget_abort_msg
-    (args.out / "leaderboard.json").write_text(json.dumps(leaderboard_doc, indent=2))
-    (args.out / "report.md").write_text(markdown)
-    (args.out / "contamination_certificate.json").write_text(
+    (run_dir / "leaderboard.json").write_text(json.dumps(leaderboard_doc, indent=2))
+    (run_dir / "report.md").write_text(markdown)
+    (run_dir / "contamination_certificate.json").write_text(
         json.dumps(certificate, indent=2)
     )
 
-    print(f"artifacts written to {args.out}/")
+    print(f"artifacts written to {run_dir}/")
+    print(f"  run_id                        {run_id}")
     print(f"  leaderboard.json              {len(model_rows)} models")
     print(f"  report.md                     {len(markdown.splitlines())} lines")
     print(f"  contamination certificate:    valid={certificate['valid']}")

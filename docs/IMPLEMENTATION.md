@@ -18,6 +18,8 @@ Executor: 30 parallel agents, orchestrated from this document and the contract r
 | P2.10 | Buzz collaboration projection (outbox, idempotent enqueues, verified resolution callback, payload builder) | DONE |
 | P3 | Leaderboard Space, interactive demo Space (flagship replay), fine-tune scaffolding (export + mlx skeleton), full-run script + real artifacts, launch blog post draft, arXiv paper draft | DONE |
 
+**Evidence rule:** nothing goes on a model/dataset card unless it is regenerable from a tagged repo state plus a committed artifact (`artifacts/<run_id>/`, tag `results-v0.1.0` pattern).
+
 ### Contract amendments (additive, ratified 2026-08-14)
 
 1. `AuditLedger.read_all(limit: int = 1000) -> list[DecisionEvent]` — bulk append-order reader (needed by P2.2/P2.3).

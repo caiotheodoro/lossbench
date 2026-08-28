@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-27T02:09:00.559214+00:00",
+  "generated_at": "2026-08-28T00:41:36.880817+00:00",
   "suite": "finance-v1",
   "cost_model": "reconciliation",
   "runner": "stub",
@@ -10,53 +10,58 @@
       "pass_at_1": 1.0,
       "pass_at_k": 1.0,
       "pass_k": 1.0,
-      "false_success_rate": 0.0,
+      "false_success_rate": null,
+      "false_success_applicable": false,
       "parse_rate": 1.0,
       "error_rate": 0.0,
       "severity_weighted_loss": 0,
       "ece": 0.1,
       "total_cost": 0.0,
-      "mean_duration_ms": 0.02183059890133639
+      "mean_duration_ms": 0.014965556911192834
     },
     {
       "model_id": "qwen3.8-27b",
       "pass_at_1": 1.0,
       "pass_at_k": 1.0,
       "pass_k": 1.0,
-      "false_success_rate": 0.0,
+      "false_success_rate": null,
+      "false_success_applicable": false,
       "parse_rate": 1.0,
       "error_rate": 0.0,
       "severity_weighted_loss": 0,
       "ece": 0.1,
       "total_cost": 0.0,
-      "mean_duration_ms": 0.022365325518573325
+      "mean_duration_ms": 0.01899831895975189
     },
     {
       "model_id": "nemotron-3.5-lightning",
       "pass_at_1": 1.0,
       "pass_at_k": 1.0,
       "pass_k": 1.0,
-      "false_success_rate": 0.0,
+      "false_success_rate": null,
+      "false_success_applicable": false,
       "parse_rate": 1.0,
       "error_rate": 0.0,
       "severity_weighted_loss": 0,
       "ece": 0.1,
       "total_cost": 0.0,
-      "mean_duration_ms": 0.018744401556129258
+      "mean_duration_ms": 0.03845690465014842
     },
     {
       "model_id": "deepseek-v4-flash",
       "pass_at_1": 1.0,
       "pass_at_k": 1.0,
       "pass_k": 1.0,
-      "false_success_rate": 0.0,
+      "false_success_rate": null,
+      "false_success_applicable": false,
       "parse_rate": 1.0,
       "error_rate": 0.0,
       "severity_weighted_loss": 0,
       "ece": 0.1,
       "total_cost": 0.0,
-      "mean_duration_ms": 0.018411135533824563
+      "mean_duration_ms": 0.015779502379397552
     }
   ],
-  "banner": "STUB PIPELINE SMOKE OUTPUT"
+  "banner": "STUB PIPELINE SMOKE OUTPUT",
+  "partial_note": "Stub pipeline smoke output, not a real run."
 }

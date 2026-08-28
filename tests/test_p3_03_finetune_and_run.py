@@ -120,7 +120,13 @@ def test_full_run_produces_artifacts(tmp_path):
     )
     assert result.returncode == 0, result.stderr
 
-    leaderboard = json.loads((tmp_path / "artifacts" / "leaderboard.json").read_text())
+    run_dirs = [p for p in (tmp_path / "artifacts").iterdir() if p.is_dir()]
+    assert len(run_dirs) == 1, run_dirs
+    run_dir = run_dirs[0]
+    assert run_dir.name.startswith("2")
+    assert "-stub-seed7-steps" in run_dir.name
+
+    leaderboard = json.loads((run_dir / "leaderboard.json").read_text())
     assert leaderboard["runner"] == "stub"
     assert len(leaderboard["models"]) == 4
     for row in leaderboard["models"]:
@@ -128,14 +134,24 @@ def test_full_run_produces_artifacts(tmp_path):
         assert row["severity_weighted_loss"] == 0.0
         assert "ece" in row
 
-    report = (tmp_path / "artifacts" / "report.md").read_text()
+    report = (run_dir / "report.md").read_text()
     assert "| Model | Loss |" in report
 
-    cert = json.loads(
-        (tmp_path / "artifacts" / "contamination_certificate.json").read_text()
-    )
+    cert = json.loads((run_dir / "contamination_certificate.json").read_text())
     assert cert["valid"] is True
 
-    cards = list((tmp_path / "artifacts" / "model_cards").glob("*.md"))
+    runconfig = json.loads((run_dir / "runconfig.json").read_text())
+    assert runconfig["runner"] == "stub"
+    assert runconfig["seed"] == 7
+    assert runconfig["model_ids"] == leaderboard_model_ids(leaderboard)
+    assert runconfig["git_revision"]
+
+    cards = sorted((run_dir / "model_cards").glob("*.md"))
     assert len(cards) == 4
-    assert (tmp_path / "artifacts" / "workload.duckdb").exists()
+    for card in cards:
+        assert card.read_text().startswith("## ⚠️ STUB PIPELINE SMOKE OUTPUT")
+    assert (run_dir / "workload.duckdb").exists()
+
+
+def leaderboard_model_ids(leaderboard: dict) -> list[str]:
+    return [row["model_id"] for row in leaderboard["models"]]

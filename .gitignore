@@ -9,5 +9,8 @@ build/
 .env
 data/raw/
 
-# build artifacts (not committed)
-artifacts/
+# run artifacts: commit the evidence chain (leaderboard.json, report.md,
+# contamination_certificate.json, model_cards/, runconfig.json); ignore only
+# the bulky binary ledger files.
+*.duckdb
+*.duckdb.wal
