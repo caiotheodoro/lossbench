@@ -8,7 +8,7 @@ Executor: 30 parallel agents, orchestrated from this document and the contract r
 
 | Wave | Packages | Status |
 |---|---|---|
-| P0 | Foundation (contract registry, metrics, decision core, cost profiles, theorem tests) | DONE — 284 tests green, lint clean |
+| P0 | Foundation (contract registry, metrics, decision core, cost profiles, theorem tests) | DONE — suite green, lint clean |
 | P1 wave 1 | P1.1 generator, P1.2 contamination, P1.3 cache, P1.4 calibrate, P1.5 features, P1.6 policy, P1.7 runners (+P1.20 baselines), P1.8 record, P1.9 CLI, P1.10 ledger, P1.11 TPS, P1.12 pass^k, P1.13 sensitivity, P1.14 registry data | DONE |
 | P1 wave 2 | P1.15 payment-repair generator, P1.16 settlement generator, P1.17 report, P1.18 HF packaging, P1.19 determinism utils | DONE |
 | P2 | P2.1 eval harness, P2.2 replay lab, P2.3 calibrate pipeline, P2.4 HITL, P2.5 langgraph adapter, P2.6 dsh adapter, P2.7 frontier report, P2.8 server | DONE |

@@ -331,7 +331,8 @@ def build_payload(out: Path, per_domain: int, artifacts: Path) -> dict:
             "Every row is a pure function of (generator version, domain, seed, "
             "index). Regenerate with `generate_suite(domain, seed, n_tasks)` "
             "from https://github.com/caiotheodoro/lossbench. The same seed "
-            "yields byte-identical tasks, which the repo enforces as a CI gate. "
+            "yields byte-identical tasks: CI runs the pipeline twice per commit "
+            "and fails on any diff outside runtime metadata. "
             "Because identity is code-version dependent, cite a revision rather "
             "than `main`."
         ),
