@@ -119,7 +119,7 @@ There is a fourth order, and it is the one I care about most. Severity-weighting
 
 Everything in this essay is measured or contested in public, and the rule of the project is that every headline number must be reproducible by a stranger:
 
-- **Repository**: [github.com/caiotheodoro/lossbench](https://github.com/caiotheodoro/lossbench) — the benchmark, the control plane, and all 351 tests. `make validate` runs them; `make determinism` proves two full runs from the same seed are byte-identical.
+- **Repository**: [github.com/caiotheodoro/lossbench](https://github.com/caiotheodoro/lossbench) — the benchmark, the control plane, and the full test suite. `make validate` runs them; `make determinism` proves two full runs from the same seed are byte-identical.
 - **The theorem, executable**: [tests/test_flat_cost_theorem.py](https://github.com/caiotheodoro/lossbench/blob/main/tests/test_flat_cost_theorem.py) — flat K ⇒ loss ranking equals accuracy ranking; and the property test that raising the cost of high-severity failures never lowers the optimal escalation rate.
 - **The cost registry**: [src/lossbench/costs/data/registry.yaml](https://github.com/caiotheodoro/lossbench/blob/main/src/lossbench/costs/data/registry.yaml) — ten sourced anchors, five domains, ranges and citations.
 - **The design**: [design spec](https://github.com/caiotheodoro/lossbench/blob/main/docs/superpowers/specs/2026-08-14-regretbench-design.md), [architecture](https://github.com/caiotheodoro/lossbench/blob/main/docs/ARCHITECTURE.md), [implementation plan](https://github.com/caiotheodoro/lossbench/blob/main/docs/IMPLEMENTATION.md).

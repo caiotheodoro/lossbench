@@ -70,7 +70,7 @@ Contract notes:
   scoring.
 - `dataset.revision` is `main` here; pin a commit SHA in a release to make
   runs reproducible.
-- Run `validate_eval_yaml` in CI before pushing the manifest.
+- Run `validate_eval_yaml` before pushing the manifest.
 
 ## How scores reach model cards (.eval_results)
 

@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: lint + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install
+        run: make install
+
+      - name: Lint
+        run: make lint
+
+      - name: Tests
+        run: make test
+
+  determinism:
+    name: determinism gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install
+        run: make install
+
+      # Two runs from the same seed must produce byte-identical report.md,
+      # contamination certificate and leaderboard, modulo runtime metadata.
+      # No LOSSBENCH_API_KEY is set, so scripts/full_run.py takes the stub
+      # path: this gate covers task generation and the scoring pipeline, not
+      # real inference.
+      - name: Determinism
+        run: make determinism

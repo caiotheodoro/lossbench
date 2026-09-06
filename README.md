@@ -1,5 +1,7 @@
 # LossBench
 
+[![CI](https://github.com/caiotheodoro/lossbench/actions/workflows/ci.yml/badge.svg)](https://github.com/caiotheodoro/lossbench/actions/workflows/ci.yml)
+
 **Expected-loss evaluation and control for agents that touch money.**
 
 Accuracy and token cost are the wrong objectives for production agents. The
@@ -28,7 +30,7 @@ LossBench Control exposes five integration surfaces:
 
 ```sh
 make install          # uv sync + env fixes (see Makefile)
-make validate         # ruff + 406 tests
+make validate         # ruff + the full test suite
 ```
 
 ## Quick start
